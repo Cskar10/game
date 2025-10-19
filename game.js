@@ -1,4 +1,4 @@
-import kaboom from "kaboom";
+import kaboom from "https://unpkg.com/kaboom/dist/kaboom.mjs";
 
 kaboom({
   background: [10, 10, 15],
@@ -7,18 +7,14 @@ kaboom({
   touchToMouse: true,
 });
 
-// Load assets (simple shapes)
 loadSprite("player", "https://raw.githubusercontent.com/replit/kaboom/main/examples/sprites/bean.png");
 
-// Game variables
 const SPEED = 240;
 const OBSTACLE_SPEED = 200;
 let score = 0;
 
-// Layers
 layers(["bg", "game", "ui"], "game");
 
-// Background gradient simulation
 add([
   rect(width(), height()),
   color(10, 10, 15),
@@ -26,7 +22,6 @@ add([
   z("bg"),
 ]);
 
-// Player setup
 const player = add([
   sprite("player"),
   scale(0.8),
@@ -36,7 +31,6 @@ const player = add([
   anchor("center"),
 ]);
 
-// Obstacle spawner
 function spawnObstacle() {
   const x = rand(50, width() - 50);
   const size = rand(30, 80);
@@ -56,7 +50,6 @@ loop(1.2, () => {
   spawnObstacle();
 });
 
-// Score label
 const scoreLabel = add([
   text("0", { size: 32 }),
   pos(20, 20),
@@ -64,7 +57,6 @@ const scoreLabel = add([
   { value: 0 },
 ]);
 
-// Controls
 onKeyDown("left", () => {
   player.move(-SPEED, 0);
 });
@@ -78,23 +70,20 @@ onTouchStart((touch) => {
   else player.move(SPEED, 0);
 });
 
-// Collision detection
 player.onCollide("obstacle", () => {
   addKaboom(player.pos);
   destroy(player);
   go("gameover", score);
 });
 
-// Update score
 onUpdate(() => {
   score += dt() * 10;
   scoreLabel.text = Math.floor(score);
 });
 
-// Game over scene
 scene("gameover", (score) => {
   add([
-    text("Game Over\nScore: " + Math.floor(score), { size: 36, align: "center" }),
+    text("Game Over\\nScore: " + Math.floor(score), { size: 36, align: "center" }),
     pos(center()),
     anchor("center"),
   ]);
@@ -102,7 +91,6 @@ scene("gameover", (score) => {
   onTouchStart(() => go("main"));
 });
 
-// Start main scene
 scene("main", () => {});
 
 go("main");
