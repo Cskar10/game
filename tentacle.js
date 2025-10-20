@@ -401,7 +401,7 @@ class Tentacle {
         // Average scale for width modulation
         const wscale = (s.a.scale + s.b.scale) * 0.5;
         const t = s.i / (this.segments.length - 1);
-        const baseW = 3.2, tipW = 1.6;
+        const baseW = 6.4, tipW = 3.2;
         const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
         ctx.lineWidth = width;
         ctx.shadowColor = 'rgba(0,150,255,0.6)';
@@ -509,7 +509,7 @@ function animate(time) {
     ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
     const wscale = (s.a.scale + s.b.scale) * 0.5;
     const t = s.i / (s.len - 1);
-    const baseW = 3.2, tipW = 1.6;
+    const baseW = 6.4, tipW = 3.2;
     const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
     ctx.lineWidth = width;
     ctx.shadowColor = 'rgba(0,150,255,0.6)';
