@@ -356,6 +356,21 @@ class Tentacle {
     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
     this.anchorAV += angleDiff * 0.1; // spacingInfluence
+
+    // Neighbor repulsion to prevent anchors from touching/crossing
+    const repulsionStrength = 0.5;
+    const minAngle = Math.PI * 2 / tentacles.length;
+    for (let j = 0; j < tentacles.length; j++) {
+      if (tentacles[j] === this) continue;
+      let otherAngle = tentacles[j].anchorAngle;
+      let diff = otherAngle - this.anchorAngle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) < minAngle * 0.8) {
+        const sign = diff > 0 ? 1 : -1;
+        this.anchorAV -= sign * repulsionStrength * (minAngle * 0.8 - Math.abs(diff)) / (minAngle * 0.8);
+      }
+    }
   }
 
   draw(ctx) {
