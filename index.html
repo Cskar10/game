@@ -23,30 +23,31 @@
 </head>
 <body>
   <script type="module">
-    import kaboom from "https://esm.sh/kaboom@3000.0.0-beta.3";
+  import kaboom from "https://esm.sh/kaboom@3000.0.0-beta.3";
 
-    // Initialize Kaboom and destructure everything you need
-    const k = kaboom({
-      background: [10, 10, 15],
-      width: 406,
-      height: 720,
-      touchToMouse: true,
-    });
+  const k = kaboom({
+    background: [10, 10, 15],
+    width: 406,
+    height: 720,
+    touchToMouse: true,
+  });
 
-    const {
-      loadSprite, add, pos, rect, color, z, sprite, scale,
-      area, body, anchor, rand, move, DOWN, offscreen,
-      outline, rgb, loop, onKeyDown, onTouchStart, addKaboom,
-      destroy, go, onUpdate, scene, text, center, dt, width, height
-    } = k;
+  const {
+    loadSprite, add, pos, rect, color, z, sprite, scale,
+    area, body, anchor, rand, move, DOWN, offscreen,
+    outline, rgb, loop, onKeyDown, onTouchStart, addKaboom,
+    destroy, go, onUpdate, scene, text, center, dt, width, height
+  } = k;
 
-    console.log("Kaboom loaded successfully!");
+  console.log("Kaboom loaded successfully!");
 
-    // Load assets
-    loadSprite("player", "./sprites/bean.png");
+  loadSprite("player", "./sprites/bean.png");
 
-    const SPEED = 240;
-    const OBSTACLE_SPEED = 200;
+  const SPEED = 240;
+  const OBSTACLE_SPEED = 200;
+
+  // MAIN GAME SCENE
+  scene("main", () => {
     let score = 0;
 
     // Background
@@ -116,24 +117,26 @@
       score += dt() * 10;
       scoreLabel.text = Math.floor(score);
     });
+  });
 
-    // Game over scene
-    scene("gameover", (score) => {
-      add([
-        text("Game Over\nScore: " + Math.floor(score), {
-          size: 36,
-          align: "center",
-        }),
-        pos(center()),
-        anchor("center"),
-      ]);
-      onKeyPress(() => go("main"));
-      onTouchStart(() => go("main"));
-    });
+  // GAME OVER SCENE
+  scene("gameover", (score) => {
+    add([
+      text("Game Over\nScore: " + Math.floor(score), {
+        size: 36,
+        align: "center",
+      }),
+      pos(center()),
+      anchor("center"),
+    ]);
 
-    // Main scene start
-    scene("main", () => {});
-    go("main");
-  </script>
+    onKeyPress(() => go("main"));
+    onTouchStart(() => go("main"));
+  });
+
+  // START THE GAME
+  go("main");
+</script>
+
 </body>
 </html>
