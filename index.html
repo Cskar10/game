@@ -20,16 +20,16 @@
 </head>
 <body>
   <script type="module">
-    import kaboom from "https://cdn.jsdelivr.net/npm/kaboom@3000.0.0-beta.3/dist/kaboom.mjs";
+  import kaboom from "https://esm.sh/kaboom@3000.0.0-beta.3";
 
-    console.log("Kaboom version:", kaboom.version);
+  console.log("Kaboom version:", kaboom.version);
 
-    kaboom({
-      background: [10, 10, 15],
-      width: 406,
-      height: 720,
-      touchToMouse: true,
-    });
+  kaboom({
+    background: [10, 10, 15],
+    width: 406,
+    height: 720,
+    touchToMouse: true,
+  });
 
     loadSprite("player", "https://kaboomjs.com/sprites/bean.png");
 
