@@ -132,8 +132,8 @@ class Tentacle {
 // -----------------------------------------------------------------------------
 const core = { x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0 };
 const tentacles = [];
-const tentacleCount = 10;
-const radius = 100; // Bigger orb
+const tentacleCount = 15;
+const radius = 50; // Bigger orb
 
 for (let i = 0; i < tentacleCount; i++) {
   const angle = (Math.PI * 2 / tentacleCount) * i;
