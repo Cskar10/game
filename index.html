@@ -3,25 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
-  <title>Dark Dodge Game</title>
+  <title>Interactive Tentacle</title>
   <style>
-    body, html {
+    html, body {
       margin: 0;
       padding: 0;
-      background: #0a0a0f;
-      height: 100%;
+      background: #000;
       overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      height: 100%;
     }
     canvas {
-      border-radius: 12px;
+      display: block;
     }
   </style>
 </head>
 <body>
-  <script type="module" src="./game.js"></script>
+  <canvas id="tentacleCanvas"></canvas>
+  <script type="module" src="./tentacle.js"></script>
 </body>
 </html>
