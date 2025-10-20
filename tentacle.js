@@ -61,6 +61,7 @@ class Tentacle {
       speedActive: 3.2,
       phaseOffset: 0.45
     };
+    this.collisionPad = 2.5;     // keep segments outside orb by this margin
 
     // Cache last attach position to inject core motion inertia
     this.lastAttachX = core.x + Math.cos(baseAngle) * attachRadius;
@@ -176,7 +177,63 @@ class Tentacle {
         p1.y += (targetY - p1.y) * this.bendStiffness;
       }
 
-      // Re-pin root after bend pass
+      // Collision with orb to keep segments outside radius
+      const minR = this.attachRadius + this.collisionPad;
+      for (let j = 1; j < this.segments.length; j++) {
+        const p = this.segments[j];
+        let dx = p.x - this.core.x;
+        let dy = p.y - this.core.y;
+        let distc = Math.hypot(dx, dy);
+        if (distc < minR) {
+          if (distc < 1e-6) {
+            dx = Math.cos(this.baseAngle);
+            dy = Math.sin(this.baseAngle);
+            distc = 1;
+          }
+          const nx = dx / distc;
+          const ny = dy / distc;
+          p.x = this.core.x + nx * minR;
+          p.y = this.core.y + ny * minR;
+        }
+      }
+      // Ensure segment lines do not cross the orb (line-circle resolution)
+      for (let j = 1; j < this.segments.length; j++) {
+        const a = this.segments[j - 1];
+        const b = this.segments[j];
+        const vx = b.x - a.x;
+        const vy = b.y - a.y;
+        const denom = vx * vx + vy * vy || 1;
+        const wx = this.core.x - a.x;
+        const wy = this.core.y - a.y;
+        let t = (vx * wx + vy * wy) / denom;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const cx = a.x + vx * t;
+        const cy = a.y + vy * t;
+
+        let ndx = cx - this.core.x;
+        let ndy = cy - this.core.y;
+        let d = Math.hypot(ndx, ndy);
+        if (d < minR) {
+          if (d < 1e-6) {
+            ndx = Math.cos(this.baseAngle);
+            ndy = Math.sin(this.baseAngle);
+            d = 1;
+          }
+          const nx = ndx / d;
+          const ny = ndy / d;
+          const push = (minR - d);
+          // Push the free end primarily
+          b.x += nx * push;
+          b.y += ny * push;
+          if (j > 1) {
+            a.x += nx * push * 0.2;
+            a.y += ny * push * 0.2;
+          }
+        }
+      }
+
+      // Re-pin root after bend/collision pass
       root.x = attachX; root.y = attachY;
     }
 
