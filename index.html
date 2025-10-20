@@ -20,9 +20,9 @@
 </head>
 <body>
   <script type="module">
-  import kaboom from "https://cdn.jsdelivr.net/npm/kaboom/dist/kaboom.mjs";
+    // Import the stable Kaboom version (includes layers + CORS safe)
+    import kaboom from "https://cdn.jsdelivr.net/npm/kaboom@2000.2.10/dist/kaboom.mjs";
 
-    // Verify kaboom loaded
     console.log("Kaboom version:", kaboom.version);
 
     kaboom({
@@ -32,7 +32,8 @@
       touchToMouse: true,
     });
 
-    loadSprite("player", "https://raw.githubusercontent.com/replit/kaboom/main/examples/sprites/bean.png");
+    // Fixed sprite path
+    loadSprite("player", "https://kaboomjs.com/sprites/bean.png");
 
     const SPEED = 240;
     const OBSTACLE_SPEED = 200;
