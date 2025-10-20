@@ -49,54 +49,120 @@ class Tentacle {
     this.length = 30;
     this.segmentLength = 10;
     this.animation = Math.random() * 100;
-    this.elasticity = 0.25;
-    this.damping = 0.9;
-    this.restAngle = baseAngle;
+
+    // Physics tuning
+    this.iterations = 8;        // constraint iterations per frame
+    this.airDamping = 0.985;    // 0..1, higher = more inertia
+    this.bendStiffness = 0.08;  // 0..1, small for stability
+    this.wave = {
+      ampIdle: 0.12,
+      ampActive: 0.28,
+      speedIdle: 2.2,
+      speedActive: 4.2,
+      phaseOffset: 0.45
+    };
 
     for (let i = 0; i < this.length; i++) {
+      const x = core.x + Math.cos(baseAngle) * (attachRadius + i * this.segmentLength);
+      const y = core.y + Math.sin(baseAngle) * (attachRadius + i * this.segmentLength);
       this.segments.push({
-        x: core.x + Math.cos(baseAngle) * (attachRadius + i * this.segmentLength),
-        y: core.y + Math.sin(baseAngle) * (attachRadius + i * this.segmentLength),
-        vx: 0,
-        vy: 0,
+        x,
+        y,
+        px: x,
+        py: y,
         offset: i * 0.3 + Math.random() * 0.5
       });
     }
   }
 
   update(dt, time, isActive) {
-    const waveAmplitude = isActive ? 0.4 : 0.6; // softer waves when idle
-    const stiffness = isActive ? 0.25 : 0.1; // less pull in idle state
+    // Parameters
+    const iter = this.iterations | 0;
+    const damp = Math.pow(this.airDamping, Math.max(1, (dt * 60) || 1));
+    const waveAmp = isActive ? this.wave.ampActive : this.wave.ampIdle;
+    const waveSpeed = isActive ? this.wave.speedActive : this.wave.speedIdle;
 
-    // Tentacle attachment point around orb’s circumference
+    // Attachment point around orb’s circumference
     const attachX = this.core.x + Math.cos(this.baseAngle) * this.attachRadius;
     const attachY = this.core.y + Math.sin(this.baseAngle) * this.attachRadius;
 
-    // Update each segment like a flexible spring chain
+    // Pin root to attachment (Verlet pinned)
+    const root = this.segments[0];
+    root.x = attachX; root.y = attachY;
+    root.px = attachX; root.py = attachY;
+
+    // Verlet integration for free segments
     for (let i = 1; i < this.segments.length; i++) {
-      const prev = this.segments[i - 1];
-      const seg = this.segments[i];
+      const p = this.segments[i];
+      const vx = (p.x - p.px) * damp;
+      const vy = (p.y - p.py) * damp;
 
-      // Distance constraint
-      const dx = seg.x - prev.x;
-      const dy = seg.y - prev.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const diff = (dist - this.segmentLength) / dist;
+      const nx = p.x + vx;
+      const ny = p.y + vy;
 
-      // Elastic correction (subtle)
-      seg.x -= dx * diff * stiffness;
-      seg.y -= dy * diff * stiffness;
+      p.px = p.x; p.py = p.y;
+      p.x = nx;   p.y = ny;
+    }
 
-      // Oscillation wave — idle tentacles sway gently
-      const oscillation = Math.sin(time * 0.002 + seg.offset + this.animation) * waveAmplitude;
-      seg.x += Math.cos(this.restAngle + Math.PI / 2) * oscillation;
-      seg.y += Math.sin(this.restAngle + Math.PI / 2) * oscillation;
+    // Iterative constraint solver
+    for (let k = 0; k < iter; k++) {
+      // 1) Distance constraints to keep fixed segment length
+      for (let i = 1; i < this.segments.length; i++) {
+        const a = this.segments[i - 1];
+        const b = this.segments[i];
 
-      // Damping (reduces jitter)
-      seg.vx *= this.damping;
-      seg.vy *= this.damping;
-      seg.x += seg.vx;
-      seg.y += seg.vy;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        let diff = (dist - this.segmentLength) / dist;
+
+        if (i - 1 === 0) {
+          // Move only the free end when the previous is the pinned root
+          b.x -= dx * diff;
+          b.y -= dy * diff;
+        } else {
+          // Move both by half the correction
+          const half = 0.5;
+          const cx = dx * diff * half;
+          const cy = dy * diff * half;
+          a.x += cx; a.y += cy;
+          b.x -= cx; b.y -= cy;
+        }
+      }
+
+      // Re-pin root after distance pass
+      root.x = attachX; root.y = attachY;
+
+      // 2) Bend stiffness / curvature target (applied to middle points)
+      for (let i = 1; i < this.segments.length - 1; i++) {
+        const p0 = this.segments[i - 1];
+        const p1 = this.segments[i];
+        const p2 = this.segments[i + 1];
+
+        const mx = (p0.x + p2.x) * 0.5;
+        const my = (p0.y + p2.y) * 0.5;
+
+        const tx = p2.x - p0.x;
+        const ty = p2.y - p0.y;
+        const tlen = Math.hypot(tx, ty) || 1;
+
+        // normal to tangent
+        const nx = -ty / tlen;
+        const ny =  tx / tlen;
+
+        // traveling wave curvature
+        const phase = time * 0.001 * waveSpeed - i * this.wave.phaseOffset + this.animation;
+        const curvature = waveAmp * Math.sin(phase);
+
+        const targetX = mx + nx * curvature * this.segmentLength;
+        const targetY = my + ny * curvature * this.segmentLength;
+
+        p1.x += (targetX - p1.x) * this.bendStiffness;
+        p1.y += (targetY - p1.y) * this.bendStiffness;
+      }
+
+      // Re-pin root after bend pass
+      root.x = attachX; root.y = attachY;
     }
   }
 
