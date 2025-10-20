@@ -5,8 +5,15 @@
 [[headers]]
   for = "*.js"
   [headers.values]
-   Cache-Control = "no-cache, no-store, must-revalidate"
+    Cache-Control = "no-cache, no-store, must-revalidate"
     Content-Type = "application/javascript; charset=UTF-8"
+
+[[headers]]
+  for = "*.mjs"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Content-Type = "application/javascript; charset=UTF-8"
+
 
 # Disable SPA redirect fallback for .js files
 [[redirects]]
