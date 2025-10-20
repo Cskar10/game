@@ -71,8 +71,6 @@ class Tentacle {
     // Tentacle attachment point around orb’s circumference
     const attachX = this.core.x + Math.cos(this.baseAngle) * this.attachRadius;
     const attachY = this.core.y + Math.sin(this.baseAngle) * this.attachRadius;
-    this.segments[0].x = attachX;
-    this.segments[0].y = attachY;
 
     // Update each segment like a flexible spring chain
     for (let i = 1; i < this.segments.length; i++) {
