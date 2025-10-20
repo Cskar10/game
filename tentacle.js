@@ -14,6 +14,18 @@ function project3D(x, y, z) {
 }
 
 // -----------------------------------------------------------------------------
+// ANCHOR RING (global, keeps equal spacing while allowing rotation)
+// -----------------------------------------------------------------------------
+const anchorRing = {
+  offset: 0,
+  av: 0,
+  friction: 0.9,
+  coreInfluence: 0.6,
+  tensionInfluence: 0.15,
+  maxAV: 6.0
+};
+
+// -----------------------------------------------------------------------------
 // INPUT
 // -----------------------------------------------------------------------------
 const mouse = { x: canvas.width / 2, y: canvas.height / 2, isDown: false };
@@ -266,8 +278,8 @@ class Tentacle {
         let distc = Math.hypot(dx, dy, dz);
         if (distc < minR) {
           if (distc < 1e-6) {
-            dx = Math.cos(this.anchorAngle);
-            dy = Math.sin(this.anchorAngle);
+            dx = Math.cos(ringAngle);
+            dy = Math.sin(ringAngle);
             dz = 0;
             distc = 1;
           }
@@ -303,8 +315,8 @@ class Tentacle {
         let d = Math.hypot(ndx, ndy, ndz);
         if (d < minR) {
           if (d < 1e-6) {
-            ndx = Math.cos(this.anchorAngle);
-            ndy = Math.sin(this.anchorAngle);
+            ndx = Math.cos(ringAngle);
+            ndy = Math.sin(ringAngle);
             ndz = 0;
             d = 1;
           }
@@ -437,6 +449,10 @@ function animate(time) {
 
   const isDragging = mouse.isDown;
 
+  // Reset global anchor ring accumulators
+  core._avAccum = 0;
+  core._avCount = 0;
+
   // Update + draw tentacles (back segments first)
   const frontSegments = [];
   for (let t of tentacles) {
@@ -445,8 +461,15 @@ function animate(time) {
     if (res && res.front) frontSegments.push(...res.front);
   }
 
-  // Draw orb glow (projected)
-  drawCore();
+  // Update global anchor ring rotation based on accumulated contributions (enforces equal spacing)
+  if (core._avCount > 0) {
+    const afr = Math.pow(anchorRing.friction, Math.max(1, (dt * 60) || 1));
+    const avg = core._avAccum / core._avCount;
+    anchorRing.av = (anchorRing.av + avg) * afr;
+    if (anchorRing.av > anchorRing.maxAV) anchorRing.av = anchorRing.maxAV;
+    else if (anchorRing.av < -anchorRing.maxAV) anchorRing.av = -anchorRing.maxAV;
+    anchorRing.offset += anchorRing.av * dt;
+    if (anchorRing.offset > Math.PI) anchorRing.offset -= Math.PI * 2;
 
   // Draw front segments (in front of orb)
   for (const s of frontSegments) {
