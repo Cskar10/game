@@ -63,6 +63,14 @@ class Tentacle {
     };
     this.collisionPad = 2.5;     // keep segments outside orb by this margin
 
+    // Rotating anchor params
+    this.anchorAngle = baseAngle;
+    this.anchorAV = 0;
+    this.anchorFriction = 0.9;
+    this.anchorCoreInfluence = 0.6;
+    this.anchorTensionInfluence = 0.15;
+    this.anchorMaxAV = 6.0; // rad/s
+
     // Cache last attach position to inject core motion inertia
     this.lastAttachX = core.x + Math.cos(baseAngle) * attachRadius;
     this.lastAttachY = core.y + Math.sin(baseAngle) * attachRadius;
@@ -87,9 +95,36 @@ class Tentacle {
     const waveAmp = isActive ? this.wave.ampActive : this.wave.ampIdle;
     const waveSpeed = isActive ? this.wave.speedActive : this.wave.speedIdle;
 
-    // Attachment point around orb’s circumference
-    const attachX = this.core.x + Math.cos(this.baseAngle) * this.attachRadius;
-    const attachY = this.core.y + Math.sin(this.baseAngle) * this.attachRadius;
+    // Update rotating anchor angle (slides around orb circumference)
+    {
+      const tx = -Math.sin(this.anchorAngle);
+      const ty =  Math.cos(this.anchorAngle);
+
+      // Project core velocity onto tangent (scaled by radius)
+      const coreTang = (this.core.vx * tx + this.core.vy * ty) / (this.attachRadius || 1);
+
+      // Tension from first free segment projected onto tangent (use last attach for stability)
+      let fTang = 0;
+      if (this.segments.length > 1) {
+        const s1 = this.segments[1];
+        const ax = this.lastAttachX;
+        const ay = this.lastAttachY;
+        fTang = ((s1.x - ax) * tx + (s1.y - ay) * ty) / (this.segmentLength || 1);
+      }
+
+      const afr = Math.pow(this.anchorFriction, Math.max(1, (dt * 60) || 1));
+      this.anchorAV = (this.anchorAV + this.anchorCoreInfluence * coreTang + this.anchorTensionInfluence * fTang) * afr;
+      if (this.anchorAV > this.anchorMaxAV) this.anchorAV = this.anchorMaxAV;
+      else if (this.anchorAV < -this.anchorMaxAV) this.anchorAV = -this.anchorMaxAV;
+
+      this.anchorAngle += this.anchorAV * dt;
+      if (this.anchorAngle > Math.PI) this.anchorAngle -= Math.PI * 2;
+      else if (this.anchorAngle < -Math.PI) this.anchorAngle += Math.PI * 2;
+    }
+
+    // Attachment point around orb’s circumference (uses rotating anchor)
+    const attachX = this.core.x + Math.cos(this.anchorAngle) * this.attachRadius;
+    const attachY = this.core.y + Math.sin(this.anchorAngle) * this.attachRadius;
 
     // Pin root to attachment (Verlet pinned)
     const root = this.segments[0];
@@ -186,8 +221,8 @@ class Tentacle {
         let distc = Math.hypot(dx, dy);
         if (distc < minR) {
           if (distc < 1e-6) {
-            dx = Math.cos(this.baseAngle);
-            dy = Math.sin(this.baseAngle);
+            dx = Math.cos(this.anchorAngle);
+            dy = Math.sin(this.anchorAngle);
             distc = 1;
           }
           const nx = dx / distc;
@@ -216,8 +251,8 @@ class Tentacle {
         let d = Math.hypot(ndx, ndy);
         if (d < minR) {
           if (d < 1e-6) {
-            ndx = Math.cos(this.baseAngle);
-            ndy = Math.sin(this.baseAngle);
+            ndx = Math.cos(this.anchorAngle);
+            ndy = Math.sin(this.anchorAngle);
             d = 1;
           }
           const nx = ndx / d;
