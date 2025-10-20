@@ -51,16 +51,20 @@ class Tentacle {
     this.animation = Math.random() * 100;
 
     // Physics tuning
-    this.iterations = 8;        // constraint iterations per frame
-    this.airDamping = 0.985;    // 0..1, higher = more inertia
-    this.bendStiffness = 0.08;  // 0..1, small for stability
+    this.iterations = 6;         // fewer iterations = looser feel
+    this.airDamping = 0.993;     // higher = more inertia/trailing
+    this.bendStiffness = 0.05;   // smaller = less stiffness/kinks
     this.wave = {
-      ampIdle: 0.12,
-      ampActive: 0.28,
-      speedIdle: 2.2,
-      speedActive: 4.2,
+      ampIdle: 0.22,             // more visible idle sway
+      ampActive: 0.05,           // almost no wave while dragging
+      speedIdle: 1.4,
+      speedActive: 3.2,
       phaseOffset: 0.45
     };
+
+    // Cache last attach position to inject core motion inertia
+    this.lastAttachX = core.x + Math.cos(baseAngle) * attachRadius;
+    this.lastAttachY = core.y + Math.sin(baseAngle) * attachRadius;
 
     for (let i = 0; i < this.length; i++) {
       const x = core.x + Math.cos(baseAngle) * (attachRadius + i * this.segmentLength);
@@ -104,6 +108,16 @@ class Tentacle {
       p.x = nx;   p.y = ny;
     }
 
+    // Inject a bit of the core motion into the first few segments to loosen trailing
+    const vax = attachX - this.lastAttachX;
+    const vay = attachY - this.lastAttachY;
+    if (this.segments.length > 2) {
+      this.segments[1].x += vax * 0.35;
+      this.segments[1].y += vay * 0.35;
+      this.segments[2].x += vax * 0.22;
+      this.segments[2].y += vay * 0.22;
+    }
+
     // Iterative constraint solver
     for (let k = 0; k < iter; k++) {
       // 1) Distance constraints to keep fixed segment length
@@ -117,9 +131,10 @@ class Tentacle {
         let diff = (dist - this.segmentLength) / dist;
 
         if (i - 1 === 0) {
-          // Move only the free end when the previous is the pinned root
-          b.x -= dx * diff;
-          b.y -= dy * diff;
+          // Move only the free end when the previous is the pinned root (with some compliance)
+          const comp = 0.6;
+          b.x -= dx * diff * comp;
+          b.y -= dy * diff * comp;
         } else {
           // Move both by half the correction
           const half = 0.5;
@@ -164,6 +179,10 @@ class Tentacle {
       // Re-pin root after bend pass
       root.x = attachX; root.y = attachY;
     }
+
+    // Cache attach for next frame inertia
+    this.lastAttachX = attachX;
+    this.lastAttachY = attachY;
   }
 
   draw(ctx) {
@@ -241,11 +260,11 @@ function animate(time) {
   core.x += core.vx;
   core.y += core.vy;
 
-  const isActive = mouse.isDown || Math.abs(core.vx) > 0.5 || Math.abs(core.vy) > 0.5;
+  const isDragging = mouse.isDown;
 
   // Update + draw tentacles
   for (let t of tentacles) {
-    t.update(dt, time, isActive);
+    t.update(dt, time, isDragging);
     t.draw(ctx);
   }
 
