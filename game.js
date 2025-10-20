@@ -1,0 +1,113 @@
+ import kaboom from "https://esm.sh/kaboom@3000.0.0-beta.3";
+
+  const k = kaboom({
+    background: [10, 10, 15],
+    width: 406,
+    height: 720,
+    touchToMouse: true,
+  });
+
+  const {
+    loadSprite, add, pos, rect, color, z, sprite, scale,
+    area, body, anchor, rand, move, DOWN, offscreen,
+    outline, rgb, loop, onKeyDown, onTouchStart, addKaboom,
+    destroy, go, onUpdate, scene, text, center, dt, width, height
+  } = k;
+
+  console.log("Kaboom loaded successfully!");
+
+  loadSprite("player", "./sprites/bean.png");
+
+  const SPEED = 240;
+  const OBSTACLE_SPEED = 200;
+
+  // MAIN GAME SCENE
+  scene("main", () => {
+    let score = 0;
+
+    // Background
+    add([
+      rect(width(), height()),
+      color(10, 10, 15),
+      pos(0, 0),
+      z(-1),
+    ]);
+
+    // Player
+    const player = add([
+      sprite("player"),
+      scale(0.1),
+      pos(width() / 2, height() - 80),
+      area(),
+      body(),
+      anchor("center"),
+    ]);
+
+    // Spawn falling obstacles
+    function spawnObstacle() {
+      const x = rand(50, width() - 50);
+      const size = rand(30, 80);
+      add([
+        rect(size, 20),
+        area(),
+        outline(2, rgb(255, 0, 0)),
+        pos(x, -20),
+        color(255, 0, 0),
+        move(DOWN, OBSTACLE_SPEED),
+        offscreen({ destroy: true }),
+        "obstacle",
+      ]);
+    }
+
+    loop(1.2, () => {
+      spawnObstacle();
+    });
+
+    // Score counter
+    const scoreLabel = add([
+      text("0", { size: 32 }),
+      pos(20, 20),
+      z(100),
+      { value: 0 },
+    ]);
+
+    // Controls
+    onKeyDown("left", () => player.move(-SPEED, 0));
+    onKeyDown("right", () => player.move(SPEED, 0));
+
+    onTouchStart((touch) => {
+      if (touch.x < width() / 2) player.move(-SPEED, 0);
+      else player.move(SPEED, 0);
+    });
+
+    // Collision
+    player.onCollide("obstacle", () => {
+      addKaboom(player.pos);
+      destroy(player);
+      go("gameover", score);
+    });
+
+    // Update score
+    onUpdate(() => {
+      score += dt() * 10;
+      scoreLabel.text = Math.floor(score);
+    });
+  });
+
+  // GAME OVER SCENE
+  scene("gameover", (score) => {
+    add([
+      text("Game Over\nScore: " + Math.floor(score), {
+        size: 36,
+        align: "center",
+      }),
+      pos(center()),
+      anchor("center"),
+    ]);
+
+    onKeyPress(() => go("main"));
+    onTouchStart(() => go("main"));
+  });
+
+  // START THE GAME
+  go("main");

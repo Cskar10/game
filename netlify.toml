@@ -2,11 +2,14 @@
   publish = "."
 
 [[headers]]
+  for = "*.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+
+[[headers]]
   for = "/*"
   [headers.values]
-    Content-Type = "text/html; charset=utf-8"
     X-Content-Type-Options = "nosniff"
-
 
 # Disable SPA redirect fallback for .js files
 [[redirects]]
