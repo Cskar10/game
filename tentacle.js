@@ -97,6 +97,7 @@ class Tentacle {
     // Cache last attach position to inject core motion inertia
     this.lastAttachX = core.x + Math.cos(baseAngle) * attachRadius;
     this.lastAttachY = core.y + Math.sin(baseAngle) * attachRadius;
+    this.lastAttachZ = 0;
 
     for (let i = 0; i < this.length; i++) {
       const x = core.x + Math.cos(baseAngle) * (attachRadius + i * this.segmentLength);
@@ -142,6 +143,10 @@ class Tentacle {
       this.anchorAV = (this.anchorAV + this.anchorCoreInfluence * coreTang + this.anchorTensionInfluence * fTang) * afr;
       if (this.anchorAV > this.anchorMaxAV) this.anchorAV = this.anchorMaxAV;
       else if (this.anchorAV < -this.anchorMaxAV) this.anchorAV = -this.anchorMaxAV;
+
+      // Accumulate for global spacing
+      core._avAccum += this.anchorAV;
+      core._avCount++;
 
       this.anchorAngle += this.anchorAV * dt;
       if (this.anchorAngle > Math.PI) this.anchorAngle -= Math.PI * 2;
@@ -278,8 +283,8 @@ class Tentacle {
         let distc = Math.hypot(dx, dy, dz);
         if (distc < minR) {
           if (distc < 1e-6) {
-            dx = Math.cos(ringAngle);
-            dy = Math.sin(ringAngle);
+            dx = Math.cos(this.anchorAngle);
+            dy = Math.sin(this.anchorAngle);
             dz = 0;
             distc = 1;
           }
@@ -315,8 +320,8 @@ class Tentacle {
         let d = Math.hypot(ndx, ndy, ndz);
         if (d < minR) {
           if (d < 1e-6) {
-            ndx = Math.cos(ringAngle);
-            ndy = Math.sin(ringAngle);
+            ndx = Math.cos(this.anchorAngle);
+            ndy = Math.sin(this.anchorAngle);
             ndz = 0;
             d = 1;
           }
@@ -344,6 +349,13 @@ class Tentacle {
     this.lastAttachX = attachX;
     this.lastAttachY = attachY;
     this.lastAttachZ = attachZ;
+
+    // Apply global spacing nudge
+    const targetAngle = this.baseAngle + anchorRing.offset;
+    let angleDiff = targetAngle - this.anchorAngle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    this.anchorAV += angleDiff * 0.1; // spacingInfluence
   }
 
   draw(ctx) {
@@ -470,6 +482,11 @@ function animate(time) {
     else if (anchorRing.av < -anchorRing.maxAV) anchorRing.av = -anchorRing.maxAV;
     anchorRing.offset += anchorRing.av * dt;
     if (anchorRing.offset > Math.PI) anchorRing.offset -= Math.PI * 2;
+    else if (anchorRing.offset < -Math.PI) anchorRing.offset += Math.PI * 2;
+  }
+
+  // Draw orb glow (projected)
+  drawCore();
 
   // Draw front segments (in front of orb)
   for (const s of frontSegments) {
