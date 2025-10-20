@@ -65,10 +65,10 @@ class Tentacle {
     this.airDamping = 0.993;     // higher = more inertia/trailing
     this.bendStiffness = 0.05;   // smaller = less stiffness/kinks
     this.wave = {
-      ampIdle: 0.22,             // more visible idle sway
-      ampActive: 0.05,           // almost no wave while dragging
-      speedIdle: 1.4,
-      speedActive: 3.2,
+      ampIdle: 0.18,
+      ampActive: 0.33,
+      speedIdle: 2.0,
+      speedActive: 4.8,
       phaseOffset: 0.45
     };
     this.collisionPad = 2.5;     // keep segments outside orb by this margin
@@ -115,6 +115,7 @@ class Tentacle {
 
       // Project core velocity onto tangent (scaled by radius)
       const coreTang = (this.core.vx * tx + this.core.vy * ty) / (this.attachRadius || 1);
+      this.coreTangVel = coreTang;
 
       // Tension from first free segment projected onto tangent (use last attach for stability)
       let fTang = 0;
@@ -240,7 +241,11 @@ class Tentacle {
 
         // traveling wave curvature
         const phase = time * 0.001 * waveSpeed - i * this.wave.phaseOffset + this.animation;
-        const curvature = waveAmp * Math.sin(phase);
+        // Amplitude envelope (tail stronger) and active gain by tangential speed
+        const idxT = i / (this.segments.length - 1);
+        const env = 0.6 + (1.25 - 0.6) * idxT; // base->tip
+        const coreGain = Math.min(1.6, Math.max(0.8, 0.8 + 0.6 * Math.abs(this.coreTangVel || 0)));
+        const curvature = waveAmp * env * coreGain * Math.sin(phase);
 
         const targetX = mx + nx3 * curvature * this.segmentLength;
         const targetY = my + ny3 * curvature * this.segmentLength;
@@ -342,7 +347,7 @@ class Tentacle {
     for (let i = 1; i < proj.length; i++) {
       const a = proj[i - 1], b = proj[i];
       const avgZ = (this.segments[i - 1].z + this.segments[i].z) * 0.5;
-      const seg = { a, b, avgZ, i, ar: this.attachRadius };
+      const seg = { a, b, avgZ, i, ar: this.attachRadius, len: this.segments.length };
       if (avgZ < 0) back.push(seg); else front.push(seg);
     }
     // Depth-sort for better occlusion: back (farther first), front (nearer first)
@@ -356,7 +361,10 @@ class Tentacle {
         ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
         // Average scale for width modulation
         const wscale = (s.a.scale + s.b.scale) * 0.5;
-        ctx.lineWidth = 1.5 * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+        const t = s.i / (this.segments.length - 1);
+        const baseW = 3.2, tipW = 1.6;
+        const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+        ctx.lineWidth = width;
         ctx.shadowColor = 'rgba(0,150,255,0.6)';
         ctx.shadowBlur = 8;
 
@@ -445,7 +453,10 @@ function animate(time) {
     const depthAlpha = Math.min(1, Math.max(0.2, 0.7 + (s.avgZ / (s.ar * 2))));
     ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
     const wscale = (s.a.scale + s.b.scale) * 0.5;
-    ctx.lineWidth = 1.5 * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+    const t = s.i / (s.len - 1);
+    const baseW = 3.2, tipW = 1.6;
+    const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+    ctx.lineWidth = width;
     ctx.shadowColor = 'rgba(0,150,255,0.6)';
     ctx.shadowBlur = 8;
     ctx.beginPath();
