@@ -4,6 +4,16 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 // -----------------------------------------------------------------------------
+// CAMERA / PROJECTION (Software 3D rendered on 2D canvas)
+// -----------------------------------------------------------------------------
+const camera = { z: 700, f: 600 };
+function project3D(x, y, z) {
+  const denom = Math.max(1e-3, camera.z - z);
+  const s = camera.f / denom;
+  return { sx: x * s, sy: y * s, scale: s, denom };
+}
+
+// -----------------------------------------------------------------------------
 // INPUT
 // -----------------------------------------------------------------------------
 const mouse = { x: canvas.width / 2, y: canvas.height / 2, isDown: false };
@@ -62,6 +72,7 @@ class Tentacle {
       phaseOffset: 0.45
     };
     this.collisionPad = 2.5;     // keep segments outside orb by this margin
+    this.zBias = 0.35 + Math.random() * 0.15; // out-of-plane bending bias for 3D look
 
     // Rotating anchor params
     this.anchorAngle = baseAngle;
@@ -81,8 +92,10 @@ class Tentacle {
       this.segments.push({
         x,
         y,
+        z: 0,
         px: x,
         py: y,
+        pz: 0,
         offset: i * 0.3 + Math.random() * 0.5
       });
     }
@@ -125,28 +138,32 @@ class Tentacle {
     // Attachment point around orb’s circumference (uses rotating anchor)
     const attachX = this.core.x + Math.cos(this.anchorAngle) * this.attachRadius;
     const attachY = this.core.y + Math.sin(this.anchorAngle) * this.attachRadius;
+    const attachZ = 0;
 
     // Pin root to attachment (Verlet pinned)
     const root = this.segments[0];
-    root.x = attachX; root.y = attachY;
-    root.px = attachX; root.py = attachY;
+    root.x = attachX; root.y = attachY; root.z = attachZ;
+    root.px = attachX; root.py = attachY; root.pz = attachZ;
 
     // Verlet integration for free segments
     for (let i = 1; i < this.segments.length; i++) {
       const p = this.segments[i];
       const vx = (p.x - p.px) * damp;
       const vy = (p.y - p.py) * damp;
+      const vz = (p.z - p.pz) * damp;
 
       const nx = p.x + vx;
       const ny = p.y + vy;
+      const nz = p.z + vz;
 
-      p.px = p.x; p.py = p.y;
-      p.x = nx;   p.y = ny;
+      p.px = p.x; p.py = p.y; p.pz = p.z;
+      p.x = nx;   p.y = ny;   p.z = nz;
     }
 
     // Inject a bit of the core motion into the first few segments to loosen trailing
     const vax = attachX - this.lastAttachX;
     const vay = attachY - this.lastAttachY;
+    const vaz = attachZ - (this.lastAttachZ ?? 0);
     if (this.segments.length > 2) {
       this.segments[1].x += vax * 0.35;
       this.segments[1].y += vay * 0.35;
@@ -163,7 +180,8 @@ class Tentacle {
 
         let dx = b.x - a.x;
         let dy = b.y - a.y;
-        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        let dz = b.z - a.z;
+        let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
         let diff = (dist - this.segmentLength) / dist;
 
         if (i - 1 === 0) {
@@ -171,18 +189,20 @@ class Tentacle {
           const comp = 0.6;
           b.x -= dx * diff * comp;
           b.y -= dy * diff * comp;
+          b.z -= dz * diff * comp;
         } else {
           // Move both by half the correction
           const half = 0.5;
           const cx = dx * diff * half;
           const cy = dy * diff * half;
-          a.x += cx; a.y += cy;
-          b.x -= cx; b.y -= cy;
+          const cz = dz * diff * half;
+          a.x += cx; a.y += cy; a.z += cz;
+          b.x -= cx; b.y -= cy; b.z -= cz;
         }
       }
 
       // Re-pin root after distance pass
-      root.x = attachX; root.y = attachY;
+      root.x = attachX; root.y = attachY; root.z = attachZ;
 
       // 2) Bend stiffness / curvature target (applied to middle points)
       for (let i = 1; i < this.segments.length - 1; i++) {
@@ -192,24 +212,43 @@ class Tentacle {
 
         const mx = (p0.x + p2.x) * 0.5;
         const my = (p0.y + p2.y) * 0.5;
+        const mz = (p0.z + p2.z) * 0.5;
 
-        const tx = p2.x - p0.x;
-        const ty = p2.y - p0.y;
-        const tlen = Math.hypot(tx, ty) || 1;
+        // 3D tangent
+        const tx3 = p2.x - p0.x;
+        const ty3 = p2.y - p0.y;
+        const tz3 = p2.z - p0.z;
+        const tlen3 = Math.hypot(tx3, ty3, tz3) || 1;
+        const tnx = tx3 / tlen3;
+        const tny = ty3 / tlen3;
+        const tnz = tz3 / tlen3;
 
-        // normal to tangent
-        const nx = -ty / tlen;
-        const ny =  tx / tlen;
+        // Build a stable normal with out-of-plane bias.
+        // Use radial (from core) and blend with global up (0,0,1) to get z.
+        const rx = p1.x - this.core.x;
+        const ry = p1.y - this.core.y;
+        const rz = p1.z - 0;
+        // Remove tangent component from radial to keep normal orthogonal to tangent
+        const dotTR = rx * tnx + ry * tny + rz * tnz;
+        let nx3 = rx - dotTR * tnx;
+        let ny3 = ry - dotTR * tny;
+        let nz3 = rz - dotTR * tnz;
+        // Add global up bias to ensure out-of-plane movement
+        nz3 += this.zBias * this.segmentLength;
+        const nlen = Math.hypot(nx3, ny3, nz3) || 1;
+        nx3 /= nlen; ny3 /= nlen; nz3 /= nlen;
 
         // traveling wave curvature
         const phase = time * 0.001 * waveSpeed - i * this.wave.phaseOffset + this.animation;
         const curvature = waveAmp * Math.sin(phase);
 
-        const targetX = mx + nx * curvature * this.segmentLength;
-        const targetY = my + ny * curvature * this.segmentLength;
+        const targetX = mx + nx3 * curvature * this.segmentLength;
+        const targetY = my + ny3 * curvature * this.segmentLength;
+        const targetZ = mz + nz3 * curvature * this.segmentLength;
 
         p1.x += (targetX - p1.x) * this.bendStiffness;
         p1.y += (targetY - p1.y) * this.bendStiffness;
+        p1.z += (targetZ - p1.z) * this.bendStiffness;
       }
 
       // Collision with orb to keep segments outside radius
@@ -218,17 +257,21 @@ class Tentacle {
         const p = this.segments[j];
         let dx = p.x - this.core.x;
         let dy = p.y - this.core.y;
-        let distc = Math.hypot(dx, dy);
+        let dz = p.z - 0;
+        let distc = Math.hypot(dx, dy, dz);
         if (distc < minR) {
           if (distc < 1e-6) {
             dx = Math.cos(this.anchorAngle);
             dy = Math.sin(this.anchorAngle);
+            dz = 0;
             distc = 1;
           }
           const nx = dx / distc;
           const ny = dy / distc;
+          const nz = dz / distc;
           p.x = this.core.x + nx * minR;
           p.y = this.core.y + ny * minR;
+          p.z = 0 + nz * minR;
         }
       }
       // Ensure segment lines do not cross the orb (line-circle resolution)
@@ -237,75 +280,105 @@ class Tentacle {
         const b = this.segments[j];
         const vx = b.x - a.x;
         const vy = b.y - a.y;
-        const denom = vx * vx + vy * vy || 1;
+        const vz = b.z - a.z;
+        const denom = vx * vx + vy * vy + vz * vz || 1;
         const wx = this.core.x - a.x;
         const wy = this.core.y - a.y;
-        let t = (vx * wx + vy * wy) / denom;
+        const wz = 0 - a.z;
+        let t = (vx * wx + vy * wy + vz * wz) / denom;
         if (t < 0) t = 0;
         else if (t > 1) t = 1;
         const cx = a.x + vx * t;
         const cy = a.y + vy * t;
+        const cz = a.z + vz * t;
 
         let ndx = cx - this.core.x;
         let ndy = cy - this.core.y;
-        let d = Math.hypot(ndx, ndy);
+        let ndz = cz - 0;
+        let d = Math.hypot(ndx, ndy, ndz);
         if (d < minR) {
           if (d < 1e-6) {
             ndx = Math.cos(this.anchorAngle);
             ndy = Math.sin(this.anchorAngle);
+            ndz = 0;
             d = 1;
           }
           const nx = ndx / d;
           const ny = ndy / d;
+          const nz = ndz / d;
           const push = (minR - d);
           // Push the free end primarily
           b.x += nx * push;
           b.y += ny * push;
+          b.z += nz * push;
           if (j > 1) {
             a.x += nx * push * 0.2;
             a.y += ny * push * 0.2;
+            a.z += nz * push * 0.2;
           }
         }
       }
 
       // Re-pin root after bend/collision pass
-      root.x = attachX; root.y = attachY;
+      root.x = attachX; root.y = attachY; root.z = attachZ;
     }
 
     // Cache attach for next frame inertia
     this.lastAttachX = attachX;
     this.lastAttachY = attachY;
+    this.lastAttachZ = attachZ;
   }
 
   draw(ctx) {
-    ctx.beginPath();
-    ctx.moveTo(this.segments[0].x, this.segments[0].y);
-    for (let i = 1; i < this.segments.length; i++) {
-      const seg = this.segments[i];
-      ctx.lineTo(seg.x, seg.y);
+    // Project all points
+    const proj = this.segments.map(p => {
+      const { sx, sy, scale } = project3D(p.x - core.x, p.y - core.y, p.z - core.z);
+      return { sx: core.x + sx, sy: core.y + sy, z: p.z, scale };
+    });
+
+    // Collect segments into back/front lists by average z
+    const back = [];
+    const front = [];
+    for (let i = 1; i < proj.length; i++) {
+      const a = proj[i - 1], b = proj[i];
+      const avgZ = (this.segments[i - 1].z + this.segments[i].z) * 0.5;
+      const seg = { a, b, avgZ, i, ar: this.attachRadius };
+      if (avgZ < 0) back.push(seg); else front.push(seg);
     }
+    // Depth-sort for better occlusion: back (farther first), front (nearer first)
+    back.sort((s1, s2) => s1.avgZ - s2.avgZ);
+    front.sort((s1, s2) => s2.avgZ - s1.avgZ);
 
-    const grad = ctx.createLinearGradient(
-      this.segments[0].x, this.segments[0].y,
-      this.segments[this.segments.length - 1].x,
-      this.segments[this.segments.length - 1].y
-    );
-    grad.addColorStop(0, 'rgba(0,200,255,0.9)');
-    grad.addColorStop(1, 'rgba(0,50,150,0.1)');
+    // Helper to draw segments list
+    const drawSegs = (list) => {
+      for (const s of list) {
+        const depthAlpha = Math.min(1, Math.max(0.2, 0.7 + (s.avgZ / (this.attachRadius * 2))));
+        ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
+        // Average scale for width modulation
+        const wscale = (s.a.scale + s.b.scale) * 0.5;
+        ctx.lineWidth = 1.5 * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+        ctx.shadowColor = 'rgba(0,150,255,0.6)';
+        ctx.shadowBlur = 8;
 
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 2.2;
-    ctx.shadowColor = 'rgba(0,150,255,0.8)';
-    ctx.shadowBlur = 12;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(s.a.sx, s.a.sy);
+        ctx.lineTo(s.b.sx, s.b.sy);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    };
+
+    // Draw back segments now; front segments after orb
+    drawSegs(back);
+    // Save front segments to be drawn by caller after orb
+    return { front };
   }
 }
 
 // -----------------------------------------------------------------------------
 // CORE
 // -----------------------------------------------------------------------------
-const core = { x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0 };
+const core = { x: canvas.width / 2, y: canvas.height / 2, z: 0, vx: 0, vy: 0 };
 const tentacles = [];
 const tentacleCount = 15;
 const radius = 50; // Bigger orb
@@ -319,13 +392,15 @@ for (let i = 0; i < tentacleCount; i++) {
 // CORE DRAW
 // -----------------------------------------------------------------------------
 function drawCore() {
-  const gradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, radius);
+  const { scale } = project3D(0, 0, 0);
+  const r2d = radius * scale;
+  const gradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, r2d);
   gradient.addColorStop(0, 'rgba(0,180,255,1)');
   gradient.addColorStop(0.3, 'rgba(0,150,255,0.8)');
   gradient.addColorStop(1, 'rgba(0,0,30,0)');
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(core.x, core.y, radius, 0, Math.PI * 2);
+  ctx.arc(core.x, core.y, r2d, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -354,14 +429,31 @@ function animate(time) {
 
   const isDragging = mouse.isDown;
 
-  // Update + draw tentacles
+  // Update + draw tentacles (back segments first)
+  const frontSegments = [];
   for (let t of tentacles) {
     t.update(dt, time, isDragging);
-    t.draw(ctx);
+    const res = t.draw(ctx);
+    if (res && res.front) frontSegments.push(...res.front);
   }
 
-  // Draw orb glow
+  // Draw orb glow (projected)
   drawCore();
+
+  // Draw front segments (in front of orb)
+  for (const s of frontSegments) {
+    const depthAlpha = Math.min(1, Math.max(0.2, 0.7 + (s.avgZ / (s.ar * 2))));
+    ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
+    const wscale = (s.a.scale + s.b.scale) * 0.5;
+    ctx.lineWidth = 1.5 * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+    ctx.shadowColor = 'rgba(0,150,255,0.6)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(s.a.sx, s.a.sy);
+    ctx.lineTo(s.b.sx, s.b.sy);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
 
   requestAnimationFrame(animate);
 }
