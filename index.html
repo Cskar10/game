@@ -20,7 +20,6 @@
 </head>
 <body>
   <script type="module">
-    // Import the stable Kaboom version (includes layers + CORS safe)
     import kaboom from "https://cdn.jsdelivr.net/npm/kaboom@3000.0.0-beta.3/dist/kaboom.mjs";
 
     console.log("Kaboom version:", kaboom.version);
@@ -32,20 +31,18 @@
       touchToMouse: true,
     });
 
-    // Fixed sprite path
     loadSprite("player", "https://kaboomjs.com/sprites/bean.png");
 
     const SPEED = 240;
     const OBSTACLE_SPEED = 200;
     let score = 0;
 
-    layers(["bg", "game", "ui"], "game");
-
+    // background
     add([
       rect(width(), height()),
       color(10, 10, 15),
       pos(0, 0),
-      z("bg"),
+      z(-1),
     ]);
 
     const player = add([
@@ -79,7 +76,7 @@
     const scoreLabel = add([
       text("0", { size: 32 }),
       pos(20, 20),
-      layer("ui"),
+      z(100),
       { value: 0 },
     ]);
 
