@@ -3,6 +3,9 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+// -----------------------------------------------------------------------------
+// INPUT HANDLING
+// -----------------------------------------------------------------------------
 const mouse = { x: canvas.width / 2, y: canvas.height / 2, isDown: false };
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
@@ -13,7 +16,7 @@ window.addEventListener('mouseup', () => { mouse.isDown = false; });
 window.addEventListener('mousemove', e => { if (mouse.isDown) { mouse.x = e.clientX; mouse.y = e.clientY; } });
 
 // -----------------------------------------------------------------------------
-// ENERGY BRIDGE SYSTEM
+// ENERGY BRIDGE STRUCTURE
 // -----------------------------------------------------------------------------
 let energyBridge = {
   isActive: false,
@@ -24,7 +27,7 @@ let energyBridge = {
 };
 
 // -----------------------------------------------------------------------------
-// TENTACLE CLASS WITH PHYSICS
+// TENTACLE CLASS
 // -----------------------------------------------------------------------------
 class Tentacle {
   constructor(core, angle) {
@@ -33,9 +36,10 @@ class Tentacle {
     this.segments = [];
     this.length = 30;
     this.segmentLength = 10;
-    this.gradient = null;
     this.animation = Math.random() * 100;
-
+    this.elasticity = 0.25; // spring pullback strength
+    this.damping = 0.9;     // velocity retention
+    this.recoilForce = 0.15; // recoil after overextension
     for (let i = 0; i < this.length; i++) {
       this.segments.push({
         x: core.x,
@@ -48,40 +52,44 @@ class Tentacle {
   }
 
   update(dt, time) {
-    const stiffness = 0.2;     // how strongly each segment follows the previous one
-    const damping = 0.8;       // energy loss per frame
-    const spread = 0.15;       // how far apart they try to stay
-    const wave = 0.4;          // sine-based animation wave amplitude
+    const waveAmplitude = 0.4;
 
-    // The root (segment 0) follows the core position
+    // Root segment follows the core
     this.segments[0].x = this.core.x;
     this.segments[0].y = this.core.y;
 
-    // Update each segment position with spring-like behavior
     for (let i = 1; i < this.segments.length; i++) {
       const prev = this.segments[i - 1];
       const seg = this.segments[i];
 
-      // Target distance from previous segment
+      // Distance constraint
       const dx = seg.x - prev.x;
       const dy = seg.y - prev.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const diff = (dist - this.segmentLength) / dist;
 
-      // Add spring force
-      seg.x -= dx * diff * stiffness;
-      seg.y -= dy * diff * stiffness;
+      // Apply spring-like correction (elastic tension)
+      const tensionX = dx * diff * this.elasticity;
+      const tensionY = dy * diff * this.elasticity;
+      seg.x -= tensionX;
+      seg.y -= tensionY;
 
-      // Add oscillation (subtle wave)
-      const oscillation = Math.sin(time * 0.002 + seg.offset + this.animation) * wave;
+      // Add recoil if stretched too far
+      if (Math.abs(dist - this.segmentLength) > this.segmentLength * 0.6) {
+        seg.vx -= tensionX * this.recoilForce;
+        seg.vy -= tensionY * this.recoilForce;
+      }
+
+      // Oscillating sine movement
+      const oscillation = Math.sin(time * 0.002 + seg.offset + this.animation) * waveAmplitude;
       seg.x += Math.cos(this.angle + Math.PI / 2) * oscillation;
       seg.y += Math.sin(this.angle + Math.PI / 2) * oscillation;
 
-      // Simple Verlet integration with damping
-      seg.vx = (seg.vx + (seg.x - seg.prevX || 0)) * damping;
-      seg.vy = (seg.vy + (seg.y - seg.prevY || 0)) * damping;
-      seg.prevX = seg.x;
-      seg.prevY = seg.y;
+      // Apply velocity + damping
+      seg.vx = (seg.vx + tensionX * -0.1) * this.damping;
+      seg.vy = (seg.vy + tensionY * -0.1) * this.damping;
+      seg.x += seg.vx;
+      seg.y += seg.vy;
     }
   }
 
@@ -92,25 +100,29 @@ class Tentacle {
       const seg = this.segments[i];
       ctx.lineTo(seg.x, seg.y);
     }
-    ctx.strokeStyle = this.gradient || 'rgba(0, 200, 255, 0.9)';
+
+    // Smooth glow gradient per tentacle
+    const grad = ctx.createLinearGradient(
+      this.segments[0].x, this.segments[0].y,
+      this.segments[this.segments.length - 1].x,
+      this.segments[this.segments.length - 1].y
+    );
+    grad.addColorStop(0, 'rgba(0,200,255,0.9)');
+    grad.addColorStop(1, 'rgba(0,50,150,0.1)');
+
+    ctx.strokeStyle = grad;
     ctx.lineWidth = 2;
-    ctx.shadowColor = 'rgba(0, 150, 255, 0.7)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(0, 150, 255, 0.8)';
+    ctx.shadowBlur = 10;
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
 }
 
 // -----------------------------------------------------------------------------
-// CORE & TENTACLES INITIALIZATION
+// CORE SETUP
 // -----------------------------------------------------------------------------
-const core = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  vx: 0,
-  vy: 0
-};
-
+const core = { x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0 };
 const tentacles = [];
 const tentacleCount = 10;
 const radius = 60;
@@ -121,12 +133,13 @@ for (let i = 0; i < tentacleCount; i++) {
 }
 
 // -----------------------------------------------------------------------------
-// CORE DRAWING
+// CORE DRAW
 // -----------------------------------------------------------------------------
 function drawCore() {
   const gradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, radius);
-  gradient.addColorStop(0, 'rgba(0,150,255,0.9)');
-  gradient.addColorStop(1, 'rgba(0,0,50,0)');
+  gradient.addColorStop(0, 'rgba(0,150,255,1)');
+  gradient.addColorStop(0.4, 'rgba(0,150,255,0.6)');
+  gradient.addColorStop(1, 'rgba(0,0,30,0)');
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(core.x, core.y, radius, 0, Math.PI * 2);
@@ -138,30 +151,31 @@ function drawCore() {
 // -----------------------------------------------------------------------------
 let lastTime = 0;
 function animate(time) {
-  const dt = (time - lastTime) * 0.001; // delta time in seconds
+  const dt = (time - lastTime) * 0.001;
   lastTime = time;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Update core position physics
+  // Core follows mouse with spring physics
+  const stiffness = 0.02;
+  const drag = 0.85;
+  const dx = mouse.x - core.x;
+  const dy = mouse.y - core.y;
   if (mouse.isDown) {
-    // target follow with springiness
-    const dx = mouse.x - core.x;
-    const dy = mouse.y - core.y;
-    core.vx += dx * 0.02;
-    core.vy += dy * 0.02;
+    core.vx += dx * stiffness;
+    core.vy += dy * stiffness;
   }
-  core.vx *= 0.85;
-  core.vy *= 0.85;
+  core.vx *= drag;
+  core.vy *= drag;
   core.x += core.vx;
   core.y += core.vy;
 
-  // Update and draw tentacles
+  // Update + draw tentacles
   for (let t of tentacles) {
     t.update(dt, time);
     t.draw(ctx);
   }
 
-  // Draw glowing orb
+  // Draw core glow
   drawCore();
 
   requestAnimationFrame(animate);
