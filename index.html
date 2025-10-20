@@ -20,16 +20,16 @@
 </head>
 <body>
   <script type="module">
-  import kaboom from "./kaboom.mjs";
+    import kaboom from "./kaboom.js";
 
-  console.log("Kaboom version:", kaboom.version);
+    console.log("Kaboom version:", kaboom.version);
 
-  kaboom({
-    background: [10, 10, 15],
-    width: 406,
-    height: 720,
-    touchToMouse: true,
-  });
+    kaboom({
+      background: [10, 10, 15],
+      width: 406,
+      height: 720,
+      touchToMouse: true,
+    });
 
     loadSprite("player", "https://kaboomjs.com/sprites/bean.png");
 
@@ -101,7 +101,7 @@
 
     scene("gameover", (score) => {
       add([
-        text("Game Over\\nScore: " + Math.floor(score), { size: 36, align: "center" }),
+        text("Game Over\nScore: " + Math.floor(score), { size: 36, align: "center" }),
         pos(center()),
         anchor("center"),
       ]);

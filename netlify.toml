@@ -1,8 +1,15 @@
 [build]
   publish = "."
-  command = ""
 
+# Force correct MIME type for JS modules
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=UTF-8"
+
+# Disable SPA redirect fallback for .js files
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
+  from = "/*.js"
+  to = "/:splat"
   status = 200
+  force = true
