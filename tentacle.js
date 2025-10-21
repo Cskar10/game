@@ -434,7 +434,7 @@ class Tentacle {
 // -----------------------------------------------------------------------------
 const core = { x: canvas.width / 2, y: canvas.height / 2, z: 0, vx: 0, vy: 0 };
 const tentacles = [];
-const tentacleCount = 15;
+const tentacleCount = 30;
 const radius = 50; // Bigger orb
 
 for (let i = 0; i < tentacleCount; i++) {
