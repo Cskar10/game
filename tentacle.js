@@ -56,8 +56,156 @@ let energyBridge = {
   progress: 0,
   startTime: 0,
   duration: 3000,
-  particles: []
+  targetX: null,
+  targetY: null,
+  particles: [],
+  lastSpawn: 0
 };
+
+// Energy bridge controls and behavior
+function startEnergyBridge() {
+  energyBridge.isActive = true;
+  energyBridge.startTime = performance.now();
+  energyBridge.progress = 0;
+  energyBridge.particles.length = 0;
+  energyBridge.lastSpawn = 0;
+  energyBridge.targetX = mouse.x;
+  energyBridge.targetY = mouse.y;
+}
+
+function stopEnergyBridge() {
+  energyBridge.isActive = false;
+  energyBridge.progress = 0;
+  energyBridge.particles.length = 0;
+}
+
+function toggleEnergyBridge() {
+  if (energyBridge.isActive) stopEnergyBridge(); else startEnergyBridge();
+}
+
+function updateEnergyBridge(dt, time) {
+  if (!energyBridge.isActive) return;
+  // Follow current mouse as the target
+  energyBridge.targetX = mouse.x;
+  energyBridge.targetY = mouse.y;
+
+  const elapsed = time - energyBridge.startTime;
+  const cycle = energyBridge.duration || 3000;
+  energyBridge.progress = ((elapsed % cycle) / cycle);
+
+  // Spawn particles along beam from core to target
+  const cx = core.x, cy = core.y;
+  const tx = energyBridge.targetX ?? cx;
+  const ty = energyBridge.targetY ?? cy;
+  let dx = tx - cx, dy = ty - cy;
+  const L = Math.hypot(dx, dy) || 1;
+  dx /= L; dy /= L; // normalize
+
+  // Spawn rate scales with length, clamp to sane values
+  const baseRate = Math.min(120, Math.max(20, L * 0.2));
+  const spawnCount = Math.floor(baseRate * dt);
+  const nx = -dy, ny = dx; // perpendicular
+
+  for (let i = 0; i < spawnCount; i++) {
+    const u = Math.random() * energyBridge.progress; // only up to current bridge progress
+    const px = cx + dx * (L * u);
+    const py = cy + dy * (L * u);
+    const lateral = (Math.random() * 2 - 1) * 80; // sideways swirl
+    const forward = 40 + Math.random() * 120;      // along the beam
+    const vx = dx * forward + nx * lateral;
+    const vy = dy * forward + ny * lateral;
+    const life = 0.6 + Math.random() * 0.9;
+    energyBridge.particles.push({ x: px, y: py, vx, vy, life, maxLife: life, r: 2 + Math.random() * 3 });
+  }
+
+  // Update particles
+  const drag = 0.96;
+  for (let p of energyBridge.particles) {
+    p.vx *= drag; p.vy *= drag;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+  energyBridge.particles = energyBridge.particles.filter(p => p.life > 0);
+}
+
+function drawEnergyBridge(ctx, time) {
+  if (!energyBridge.isActive) return;
+  const cx = core.x, cy = core.y;
+  const tx = energyBridge.targetX ?? cx;
+  const ty = energyBridge.targetY ?? cy;
+  const dx = tx - cx, dy = ty - cy;
+  const L = Math.hypot(dx, dy) || 1;
+  const ux = dx / L, uy = dy / L;
+  const prog = energyBridge.progress;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Beam core (shortens/extends with progress)
+  const ex = cx + ux * (L * prog);
+  const ey = cy + uy * (L * prog);
+
+  // Outer glow
+  ctx.strokeStyle = 'rgba(0,180,255,0.25)';
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+
+  // Inner beam
+  const w = 6 + 4 * Math.sin(prog * Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,240,255,0.85)';
+  ctx.lineWidth = w;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+
+  // Moving dashes along the beam
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 2.2;
+  const dashCount = 6;
+  for (let i = 0; i < dashCount; i++) {
+    const o = ((prog + i / dashCount) % 1) * (L * prog);
+    const len = Math.min(24, 8 + (i % 3) * 6);
+    const sx = cx + ux * o;
+    const sy = cy + uy * o;
+    const tx2 = cx + ux * Math.min(o + len, L * prog);
+    const ty2 = cy + uy * Math.min(o + len, L * prog);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(tx2, ty2);
+    ctx.stroke();
+  }
+
+  // Particles
+  for (let p of energyBridge.particles) {
+    const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+    const r = p.r * (0.5 + 0.5 * a);
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3);
+    g.addColorStop(0, `rgba(255,255,255,${0.9 * a})`);
+    g.addColorStop(0.5, `rgba(0,220,255,${0.5 * a})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// Keyboard toggles
+window.addEventListener('keydown', e => {
+  if (e.key === 'e' || e.key === 'E') {
+    toggleEnergyBridge();
+  } else if (e.key === 'p' || e.key === 'P') {
+    currentPhysicsProfile = currentPhysicsProfile === 'silky' ? 'snappy' : 'silky';
+    applyPhysicsProfile(currentPhysicsProfile);
+  }
+});
 
 // -----------------------------------------------------------------------------
 // TENTACLE CLASS
@@ -442,14 +590,58 @@ for (let i = 0; i < tentacleCount; i++) {
   tentacles.push(new Tentacle(core, angle, radius)); // attach further from center
 }
 
+// Physics profiles for different feel
+const physicsProfiles = {
+  snappy: {
+    iterations: 4,
+    airDamping: 0.995,
+    bendStiffness: 0.08,
+    frictionStrength: 0.15,
+    wave: { ampIdle: 0.18, ampActive: 0.33, speedIdle: 2.0, speedActive: 4.8, phaseOffset: 0.45 }
+  },
+  silky: {
+    iterations: 4,
+    airDamping: 0.997,
+    bendStiffness: 0.06,
+    frictionStrength: 0.08,
+    wave: { ampIdle: 0.14, ampActive: 0.42, speedIdle: 1.4, speedActive: 5.6, phaseOffset: 0.45 }
+  }
+};
+
+function applyPhysicsProfile(profile) {
+  const cfg = physicsProfiles[profile];
+  if (!cfg) return;
+  for (const t of tentacles) {
+    t.iterations = cfg.iterations;
+    t.airDamping = cfg.airDamping;
+    t.bendStiffness = cfg.bendStiffness;
+    t.frictionStrength = cfg.frictionStrength;
+    t.wave.ampIdle = cfg.wave.ampIdle;
+    t.wave.ampActive = cfg.wave.ampActive;
+    t.wave.speedIdle = cfg.wave.speedIdle;
+    t.wave.speedActive = cfg.wave.speedActive;
+    if (cfg.wave.phaseOffset !== undefined) t.wave.phaseOffset = cfg.wave.phaseOffset;
+  }
+}
+
+let currentPhysicsProfile = 'silky';
+applyPhysicsProfile(currentPhysicsProfile);
+
 // -----------------------------------------------------------------------------
 // CORE DRAW
 // -----------------------------------------------------------------------------
-function drawCore() {
+function drawCore(time) {
   const { scale } = project3D(0, 0, 0);
-  const r2d = radius * scale;
+  // Pulse radius subtly when energy bridge is active
+  let pulse = 1;
+  if (energyBridge.isActive) {
+    const cyc = energyBridge.duration || 3000;
+    const p = ((time - energyBridge.startTime) % cyc) / cyc;
+    pulse = 1 + 0.07 * Math.sin(p * Math.PI * 2);
+  }
+  const r2d = radius * scale * pulse;
   const gradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, r2d);
-  gradient.addColorStop(0, 'rgba(0,180,255,1)');
+  gradient.addColorStop(0, energyBridge.isActive ? 'rgba(0,220,255,1)' : 'rgba(0,180,255,1)');
   gradient.addColorStop(0.3, 'rgba(0,150,255,0.8)');
   gradient.addColorStop(1, 'rgba(0,0,30,0)');
   ctx.fillStyle = gradient;
@@ -482,6 +674,7 @@ function animate(time) {
   core.y += core.vy;
 
   const isDragging = mouse.isDown;
+  const isActive = isDragging || energyBridge.isActive;
 
   // Reset global anchor ring accumulators
   core._avAccum = 0;
@@ -490,7 +683,7 @@ function animate(time) {
   // Update + draw tentacles (back segments first)
   const frontSegments = [];
   for (let t of tentacles) {
-    t.update(dt, time, isDragging);
+    t.update(dt, time, isActive);
     const res = t.draw(ctx);
     if (res && res.front) frontSegments.push(...res.front);
   }
@@ -507,8 +700,14 @@ function animate(time) {
     else if (anchorRing.offset < -Math.PI) anchorRing.offset += Math.PI * 2;
   }
 
+  // Energy bridge update
+  updateEnergyBridge(dt, time);
+
   // Draw orb glow (projected)
-  drawCore();
+  drawCore(time);
+
+  // Draw energy bridge beam and particles (in front of orb, behind nearer tentacles)
+  drawEnergyBridge(ctx, time);
 
   // Draw front segments (in front of orb)
   for (const s of frontSegments) {
