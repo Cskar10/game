@@ -85,6 +85,7 @@ class Tentacle {
     };
     this.collisionPad = 2.5;     // keep segments outside orb by this margin
     this.zBias = 0.35 + Math.random() * 0.15; // out-of-plane bending bias for 3D look
+    this.frictionStrength = 0.15; // 0..1, higher = more drag on canvas
 
     // Rotating anchor params
     this.anchorAngle = baseAngle;
@@ -163,16 +164,22 @@ class Tentacle {
     root.x = attachX; root.y = attachY; root.z = attachZ;
     root.px = attachX; root.py = attachY; root.pz = attachZ;
 
-    // Verlet integration for free segments
+    // Verlet integration for free segments with canvas friction
     for (let i = 1; i < this.segments.length; i++) {
       const p = this.segments[i];
       const vx = (p.x - p.px) * damp;
       const vy = (p.y - p.py) * damp;
       const vz = (p.z - p.pz) * damp;
 
-      const nx = p.x + vx;
-      const ny = p.y + vy;
-      const nz = p.z + vz;
+      // Apply friction to simulate mop-like drag on canvas
+      const friction = this.frictionStrength;
+      const fx = -vx * friction;
+      const fy = -vy * friction;
+      const fz = -vz * friction;
+
+      const nx = p.x + vx + fx;
+      const ny = p.y + vy + fy;
+      const nz = p.z + vz + fz;
 
       p.px = p.x; p.py = p.y; p.pz = p.z;
       p.x = nx;   p.y = ny;   p.z = nz;
