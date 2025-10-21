@@ -73,9 +73,9 @@ class Tentacle {
     this.animation = Math.random() * 100;
 
     // Physics tuning
-    this.iterations = 6;         // fewer iterations = looser feel
-    this.airDamping = 0.993;     // higher = more inertia/trailing
-    this.bendStiffness = 0.05;   // smaller = less stiffness/kinks
+    this.iterations = 4;         // reduced for better performance
+    this.airDamping = 0.995;     // slightly higher for stability
+    this.bendStiffness = 0.08;   // increased for snappier response
     this.wave = {
       ampIdle: 0.18,
       ampActive: 0.33,
