@@ -4,6 +4,84 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 // -----------------------------------------------------------------------------
+// COLOR PALETTES & UI STATE
+// -----------------------------------------------------------------------------
+const paletteState = { index: 0 };
+const palettes = [
+  {
+    name: 'Neon Tide',
+    tentacle: { r: 0, g: 200, b: 255 },
+    glow: { r: 0, g: 150, b: 255 },
+    orb: {
+      inner: { r: 0, g: 190, b: 255, a: 1 },
+      mid: { r: 0, g: 120, b: 245, a: 0.8 },
+      outer: { r: 0, g: 40, b: 110, a: 0 }
+    },
+    background: {
+      top: '#020916',
+      mid: '#031c32',
+      bottom: '#000a14',
+      star: { r: 120, g: 200, b: 255 }
+    },
+    bridge: {
+      inner: { r: 120, g: 225, b: 255 },
+      outer: { r: 20, g: 140, b: 255 }
+    },
+    ripple: { r: 0, g: 190, b: 255 }
+  },
+  {
+    name: 'Solar Bloom',
+    tentacle: { r: 255, g: 150, b: 40 },
+    glow: { r: 255, g: 80, b: 20 },
+    orb: {
+      inner: { r: 255, g: 180, b: 70, a: 1 },
+      mid: { r: 255, g: 90, b: 50, a: 0.75 },
+      outer: { r: 120, g: 30, b: 0, a: 0 }
+    },
+    background: {
+      top: '#1a0524',
+      mid: '#32092c',
+      bottom: '#140310',
+      star: { r: 255, g: 160, b: 90 }
+    },
+    bridge: {
+      inner: { r: 255, g: 200, b: 120 },
+      outer: { r: 255, g: 90, b: 40 }
+    },
+    ripple: { r: 255, g: 140, b: 70 }
+  },
+  {
+    name: 'Abyss Warden',
+    tentacle: { r: 120, g: 90, b: 255 },
+    glow: { r: 80, g: 60, b: 220 },
+    orb: {
+      inner: { r: 190, g: 160, b: 255, a: 1 },
+      mid: { r: 120, g: 90, b: 255, a: 0.78 },
+      outer: { r: 20, g: 0, b: 60, a: 0 }
+    },
+    background: {
+      top: '#06011a',
+      mid: '#12082c',
+      bottom: '#04010f',
+      star: { r: 160, g: 130, b: 255 }
+    },
+    bridge: {
+      inner: { r: 210, g: 190, b: 255 },
+      outer: { r: 110, g: 80, b: 250 }
+    },
+    ripple: { r: 170, g: 140, b: 255 }
+  }
+];
+
+function getPalette() {
+  return palettes[paletteState.index];
+}
+
+function toRgba(rgb, alpha = 1) {
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
+// -----------------------------------------------------------------------------
 // CAMERA / PROJECTION (Software 3D rendered on 2D canvas)
 // -----------------------------------------------------------------------------
 const camera = { z: 700, f: 600 };
@@ -32,11 +110,13 @@ const mouse = { x: canvas.width / 2, y: canvas.height / 2, isDown: false };
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  initBackground();
 });
 window.addEventListener('mousedown', e => {
   mouse.isDown = true;
   mouse.x = e.clientX;
   mouse.y = e.clientY;
+  addRipple(mouse.x, mouse.y);
 });
 window.addEventListener('mouseup', () => {
   mouse.isDown = false;
@@ -47,6 +127,45 @@ window.addEventListener('mousemove', e => {
     mouse.y = e.clientY;
   }
 });
+window.addEventListener('touchstart', e => {
+  const touch = e.touches[0];
+  if (!touch) return;
+  mouse.isDown = true;
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+  addRipple(mouse.x, mouse.y);
+  e.preventDefault();
+}, { passive: false });
+window.addEventListener('touchend', () => {
+  mouse.isDown = false;
+});
+window.addEventListener('touchcancel', () => {
+  mouse.isDown = false;
+});
+window.addEventListener('touchmove', e => {
+  if (!mouse.isDown) return;
+  const touch = e.touches[0];
+  if (!touch) return;
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+  e.preventDefault();
+}, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    requestEnergyBridge();
+  } else if (e.key === 'q' || e.key === 'Q') {
+    cyclePalette(-1);
+  } else if (e.key === 'e' || e.key === 'E') {
+    cyclePalette(1);
+  } else if (e.key === 'h' || e.key === 'H') {
+    toggleHud();
+  }
+});
+window.addEventListener('dblclick', e => {
+  requestEnergyBridge();
+  addRipple(e.clientX, e.clientY);
+});
 
 // -----------------------------------------------------------------------------
 // ENERGY BRIDGE SYSTEM
@@ -56,8 +175,270 @@ let energyBridge = {
   progress: 0,
   startTime: 0,
   duration: 3000,
-  particles: []
+  cooldown: 3500,
+  lastTrigger: Number.NEGATIVE_INFINITY,
+  particles: [],
+  pending: false,
+  spawnAccumulator: 0
 };
+
+// -----------------------------------------------------------------------------
+// BACKGROUND, HUD, AND VISUAL FX
+// -----------------------------------------------------------------------------
+const background = {
+  particles: [],
+  parallax: 0.12
+};
+
+const ripples = [];
+
+const hudEl = document.getElementById('hud');
+const paletteNameEl = document.getElementById('paletteName');
+const bridgeStatusEl = document.getElementById('bridgeStatus');
+let hudVisible = true;
+
+function initBackground() {
+  const area = canvas.width * canvas.height;
+  const density = Math.min(260, Math.max(90, Math.round(area / 3600)));
+  background.particles.length = 0;
+  for (let i = 0; i < density; i++) {
+    const depth = 0.25 + Math.random() * 0.75;
+    background.particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      depth,
+      size: 0.6 + depth * 1.4,
+      driftX: (Math.random() - 0.5) * 6,
+      driftY: (Math.random() - 0.5) * 4,
+      twinkle: Math.random()
+    });
+  }
+}
+
+function updateBackground(dt, dxCore, dyCore) {
+  const parallaxFactor = background.parallax;
+  for (let i = 0; i < background.particles.length; i++) {
+    const p = background.particles[i];
+    const parallax = (1 - p.depth) * parallaxFactor;
+    p.x -= dxCore * parallax;
+    p.y -= dyCore * parallax;
+
+    p.x += p.driftX * dt;
+    p.y += p.driftY * dt;
+    p.twinkle = (p.twinkle + dt * 0.35 + Math.random() * 0.01) % 1;
+
+    if (p.x < -50) p.x += canvas.width + 100;
+    else if (p.x > canvas.width + 50) p.x -= canvas.width + 100;
+    if (p.y < -50) p.y += canvas.height + 100;
+    else if (p.y > canvas.height + 50) p.y -= canvas.height + 100;
+  }
+}
+
+function drawBackground() {
+  const palette = getPalette();
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, palette.background.top);
+  gradient.addColorStop(0.6, palette.background.mid);
+  gradient.addColorStop(1, palette.background.bottom);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  for (let i = 0; i < background.particles.length; i++) {
+    const p = background.particles[i];
+    const alpha = 0.2 + p.twinkle * 0.6;
+    ctx.fillStyle = toRgba(palette.background.star, alpha);
+    const size = p.size * (0.8 + p.twinkle * 0.6);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function addRipple(x, y) {
+  ripples.push({
+    x,
+    y,
+    start: performance.now(),
+    lifespan: 900
+  });
+}
+
+function drawRipples(now) {
+  const palette = getPalette();
+  const nowTime = now > 0 ? now : performance.now();
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const ripple = ripples[i];
+    const age = nowTime - ripple.start;
+    if (age > ripple.lifespan) {
+      ripples.splice(i, 1);
+      continue;
+    }
+    const t = age / ripple.lifespan;
+    const radius = 30 + t * 180;
+    const alpha = Math.max(0, 1 - t);
+    ctx.strokeStyle = toRgba(palette.ripple, alpha * 0.35);
+    ctx.lineWidth = 2 + t * 4;
+    ctx.beginPath();
+    ctx.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function setPalette(index) {
+  paletteState.index = ((index % palettes.length) + palettes.length) % palettes.length;
+  if (paletteNameEl) {
+    paletteNameEl.textContent = getPalette().name;
+  }
+}
+
+function cyclePalette(direction) {
+  setPalette(paletteState.index + direction);
+}
+
+function updateHud(now) {
+  const palette = getPalette();
+  if (paletteNameEl) paletteNameEl.textContent = palette.name;
+
+  if (!bridgeStatusEl) return;
+  let status = 'Ready';
+  const remaining = energyBridge.isActive
+    ? 0
+    : Math.max(0, (energyBridge.cooldown - (now - energyBridge.lastTrigger)) / 1000);
+
+  if (energyBridge.isActive) {
+    status = 'Bridge active';
+  } else if (remaining > 0.05) {
+    status = `Recharging (${remaining.toFixed(1)}s)`;
+  }
+  bridgeStatusEl.textContent = status;
+}
+
+function toggleHud() {
+  hudVisible = !hudVisible;
+  if (!hudEl) return;
+  if (hudVisible) hudEl.classList.remove('hidden');
+  else hudEl.classList.add('hidden');
+}
+
+function requestEnergyBridge() {
+  energyBridge.pending = true;
+}
+
+function maybeActivateEnergyBridge(now) {
+  if (!energyBridge.pending) return;
+  energyBridge.pending = false;
+  if (energyBridge.isActive) return;
+  if (now - energyBridge.lastTrigger < energyBridge.cooldown) return;
+  energyBridge.isActive = true;
+  energyBridge.startTime = now;
+  energyBridge.progress = 0;
+  energyBridge.lastTrigger = now;
+  energyBridge.particles.length = 0;
+  energyBridge.spawnAccumulator = 0;
+  addRipple(core.x, core.y);
+}
+
+function updateEnergyBridge(dt, now, tips) {
+  if (!energyBridge.isActive) return;
+  const elapsed = now - energyBridge.startTime;
+  energyBridge.progress = Math.min(1, elapsed / energyBridge.duration);
+  if (elapsed >= energyBridge.duration) {
+    energyBridge.isActive = false;
+    energyBridge.progress = 1;
+    energyBridge.particles.length = 0;
+    return;
+  }
+
+  const tipCount = Math.max(1, tips.length);
+  const targetParticles = Math.min(120, tipCount * 4);
+  energyBridge.spawnAccumulator += dt * tipCount * 1.2;
+  while (energyBridge.spawnAccumulator > 1 && energyBridge.particles.length < targetParticles) {
+    energyBridge.spawnAccumulator -= 1;
+    energyBridge.particles.push({
+      tipIndex: Math.floor(Math.random() * tipCount),
+      t: Math.random() * 0.4,
+      speed: 0.35 + Math.random() * 0.65
+    });
+  }
+
+  for (let i = energyBridge.particles.length - 1; i >= 0; i--) {
+    const p = energyBridge.particles[i];
+    p.t += dt * p.speed;
+    if (p.t > 1.1) {
+      energyBridge.particles.splice(i, 1);
+    }
+  }
+}
+
+function projectPoint(point) {
+  const { sx, sy } = project3D(point.x - core.x, point.y - core.y, point.z - core.z);
+  return { x: core.x + sx, y: core.y + sy, z: point.z };
+}
+
+function drawEnergyBridge(now, tips) {
+  if (!energyBridge.isActive) return;
+  const palette = getPalette();
+  const ease = Math.sin(Math.PI * energyBridge.progress);
+  const source = { x: core.x, y: core.y, z: core.z };
+  const stride = Math.max(1, Math.floor(tips.length / 8));
+  const prevComposite = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = 'lighter';
+
+  const innerColor = toRgba(palette.bridge.inner, 0.55 + ease * 0.25);
+  const outerColor = toRgba(palette.bridge.outer, 0.25 + ease * 0.35);
+
+  for (let i = 0; i < tips.length; i += stride) {
+    const tip = tips[i];
+    if (!tip) continue;
+    const projTip = projectPoint(tip);
+    const midX = (source.x + projTip.x) * 0.5;
+    const midY = (source.y + projTip.y) * 0.5 - 80 * ease;
+
+    ctx.strokeStyle = outerColor;
+    ctx.lineWidth = 2.4 + ease * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(source.x, source.y);
+    ctx.quadraticCurveTo(midX, midY, projTip.x, projTip.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = innerColor;
+    ctx.lineWidth = 1.2 + ease * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(source.x, source.y);
+    ctx.quadraticCurveTo(midX, midY, projTip.x, projTip.y);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < energyBridge.particles.length; i++) {
+    const particle = energyBridge.particles[i];
+    const tip = tips[particle.tipIndex];
+    if (!tip) continue;
+    const projTip = projectPoint(tip);
+    const midX = (source.x + projTip.x) * 0.5;
+    const midY = (source.y + projTip.y) * 0.5 - 80 * ease;
+    const t = particle.t;
+
+    const ax = source.x;
+    const ay = source.y;
+    const bx = projTip.x;
+    const by = projTip.y;
+    const cx = midX;
+    const cy = midY;
+    const u = 1 - t;
+    const x = u * u * ax + 2 * u * t * cx + t * t * bx;
+    const y = u * u * ay + 2 * u * t * cy + t * t * by;
+
+    const alpha = Math.max(0, 0.35 + Math.sin(t * Math.PI) * 0.55);
+    ctx.fillStyle = toRgba(palette.bridge.inner, alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, 3.2 + Math.sin(t * Math.PI) * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = prevComposite;
+}
 
 // -----------------------------------------------------------------------------
 // TENTACLE CLASS
@@ -386,6 +767,7 @@ class Tentacle {
       const { sx, sy, scale } = project3D(p.x - core.x, p.y - core.y, p.z - core.z);
       return { sx: core.x + sx, sy: core.y + sy, z: p.z, scale };
     });
+    const palette = getPalette();
 
     // Collect segments into back/front lists by average z
     const back = [];
@@ -404,14 +786,14 @@ class Tentacle {
     const drawSegs = (list) => {
       for (const s of list) {
         const depthAlpha = Math.min(1, Math.max(0.2, 0.7 + (s.avgZ / (this.attachRadius * 2))));
-        ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
+        ctx.strokeStyle = toRgba(palette.tentacle, depthAlpha);
         // Average scale for width modulation
         const wscale = (s.a.scale + s.b.scale) * 0.5;
         const t = s.i / (this.segments.length - 1);
         const baseW = 6.4, tipW = 3.2;
         const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
         ctx.lineWidth = width;
-        ctx.shadowColor = 'rgba(0,150,255,0.6)';
+        ctx.shadowColor = toRgba(palette.glow, 0.6);
         ctx.shadowBlur = 8;
 
         ctx.beginPath();
@@ -448,26 +830,39 @@ for (let i = 0; i < tentacleCount; i++) {
 function drawCore() {
   const { scale } = project3D(0, 0, 0);
   const r2d = radius * scale;
+  const palette = getPalette();
   const gradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, r2d);
-  gradient.addColorStop(0, 'rgba(0,180,255,1)');
-  gradient.addColorStop(0.3, 'rgba(0,150,255,0.8)');
-  gradient.addColorStop(1, 'rgba(0,0,30,0)');
+  gradient.addColorStop(0, toRgba(palette.orb.inner, palette.orb.inner.a ?? 1));
+  gradient.addColorStop(0.35, toRgba(palette.orb.mid, palette.orb.mid.a ?? 0.75));
+  gradient.addColorStop(1, toRgba(palette.orb.outer, palette.orb.outer.a ?? 0));
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(core.x, core.y, r2d, 0, Math.PI * 2);
   ctx.fill();
+
+  // Halo accent when the energy bridge is active
+  if (energyBridge.isActive) {
+    const pulse = 0.4 + Math.sin(Math.PI * energyBridge.progress) * 0.35;
+    ctx.strokeStyle = toRgba(palette.bridge.inner, 0.35 + pulse * 0.3);
+    ctx.lineWidth = 4 + pulse * 6;
+    ctx.beginPath();
+    ctx.arc(core.x, core.y, r2d * (1.05 + pulse * 0.25), 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 // -----------------------------------------------------------------------------
 // ANIMATION LOOP
 // -----------------------------------------------------------------------------
 let lastTime = 0;
+let lastCoreX = core.x;
+let lastCoreY = core.y;
 function animate(time) {
   const dt = (time - lastTime) * 0.001;
   lastTime = time;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  maybeActivateEnergyBridge(time);
 
-  // Core follows mouse smoothly
+  // Core follows mouse smoothly (physics untouched)
   const stiffness = 0.02;
   const drag = 0.85;
   const dx = mouse.x - core.x;
@@ -481,6 +876,15 @@ function animate(time) {
   core.x += core.vx;
   core.y += core.vy;
 
+  const deltaCoreX = core.x - lastCoreX;
+  const deltaCoreY = core.y - lastCoreY;
+  lastCoreX = core.x;
+  lastCoreY = core.y;
+
+  updateBackground(dt, deltaCoreX, deltaCoreY);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBackground();
+
   const isDragging = mouse.isDown;
 
   // Reset global anchor ring accumulators
@@ -489,8 +893,10 @@ function animate(time) {
 
   // Update + draw tentacles (back segments first)
   const frontSegments = [];
+  const tentacleTips = [];
   for (let t of tentacles) {
     t.update(dt, time, isDragging);
+    tentacleTips.push(t.segments[t.segments.length - 1]);
     const res = t.draw(ctx);
     if (res && res.front) frontSegments.push(...res.front);
   }
@@ -511,15 +917,16 @@ function animate(time) {
   drawCore();
 
   // Draw front segments (in front of orb)
+  const palette = getPalette();
   for (const s of frontSegments) {
     const depthAlpha = Math.min(1, Math.max(0.2, 0.7 + (s.avgZ / (s.ar * 2))));
-    ctx.strokeStyle = `rgba(0,200,255,${depthAlpha})`;
+    ctx.strokeStyle = toRgba(palette.tentacle, depthAlpha);
     const wscale = (s.a.scale + s.b.scale) * 0.5;
-    const t = s.i / (s.len - 1);
+    const tNorm = s.i / (s.len - 1);
     const baseW = 6.4, tipW = 3.2;
-    const width = (baseW + (tipW - baseW) * t) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
+    const width = (baseW + (tipW - baseW) * tNorm) * Math.min(2.0, Math.max(0.6, wscale * 0.02));
     ctx.lineWidth = width;
-    ctx.shadowColor = 'rgba(0,150,255,0.6)';
+    ctx.shadowColor = toRgba(palette.glow, 0.6);
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(s.a.sx, s.a.sy);
@@ -528,7 +935,15 @@ function animate(time) {
   }
   ctx.shadowBlur = 0;
 
+  updateEnergyBridge(dt, time, tentacleTips);
+  drawEnergyBridge(time, tentacleTips);
+  drawRipples(time);
+  updateHud(time);
+
   requestAnimationFrame(animate);
 }
 
+initBackground();
+setPalette(paletteState.index);
+updateHud(0);
 animate(0);

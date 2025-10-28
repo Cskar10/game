@@ -15,10 +15,82 @@
     canvas {
       display: block;
     }
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      color: #c8dcff;
+    }
+    #hud {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 14px 18px;
+      background: rgba(10, 18, 42, 0.58);
+      border: 1px solid rgba(88, 130, 255, 0.35);
+      border-radius: 12px;
+      backdrop-filter: blur(9px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+      transition: opacity 220ms ease, transform 220ms ease;
+      max-width: 260px;
+      pointer-events: none;
+    }
+    #hud.hidden {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    #hud .title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    #hud .subtitle {
+      font-size: 0.8rem;
+      margin-top: 6px;
+      opacity: 0.72;
+      letter-spacing: 0.04em;
+    }
+    #hud .controls {
+      margin-top: 12px;
+      display: grid;
+      gap: 6px;
+      font-size: 0.78rem;
+    }
+    #hud kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(200, 220, 255, 0.35);
+      background: rgba(25, 50, 90, 0.5);
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #eff6ff;
+      margin-right: 4px;
+    }
+    #hud .status {
+      margin-top: 14px;
+      font-size: 0.74rem;
+      opacity: 0.78;
+      letter-spacing: 0.05em;
+    }
   </style>
 </head>
 <body>
   <canvas id="tentacleCanvas"></canvas>
+  <div id="hud">
+    <div class="title">Abyssal Resonance</div>
+    <div class="subtitle">Drag the core, weave the current.</div>
+    <div class="controls">
+      <div><kbd>drag</kbd> Move the core orb</div>
+      <div><kbd>space</kbd> Release an energy bridge</div>
+      <div><kbd>q</kbd>/<kbd>e</kbd> Swap color palettes</div>
+      <div><kbd>h</kbd> Toggle this display</div>
+    </div>
+    <div class="status">
+      Palette: <span id="paletteName">Neon Tide</span><br />
+      Bridge: <span id="bridgeStatus">Ready</span>
+    </div>
+  </div>
   <script type="module" src="./tentacle.js"></script>
 </body>
 </html>
