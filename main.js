@@ -1,9 +1,6 @@
 const path = require('path');
 const { app, BrowserWindow, nativeTheme } = require('electron');
 
-// Disable GPU acceleration to avoid GL driver issues on minimal setups (e.g. WSL).
-app.disableHardwareAcceleration();
-
 function createWindow() {
   nativeTheme.themeSource = 'dark';
 
