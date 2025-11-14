@@ -123,10 +123,24 @@ void Tentacle::Update(float dt, double timeMs, bool isActive, AnchorRing& ring, 
 
     const float afr = powf(anchorFriction, fmaxf(1.0f, dt * 60.0f));
     anchorAV = (anchorAV + anchorCoreInfluence * coreTang + anchorTensionInfluence * tension) * afr;
-    anchorAV = std::clamp(anchorAV, -anchorMaxAV, anchorMaxAV);
 
-    core.avAccum += anchorAV;
-    core.avCount += 1;
+    const float targetAngle = baseAngle + ring.offset;
+    float spacingError = ClampAngle(targetAngle - anchorAngle);
+    const float spacingGain = 0.8f;
+    anchorAV += spacingError * spacingGain;
+
+    const float repulsionStrength = 0.5f;
+    const float minAngle = PI2 / static_cast<float>(neighbors.size());
+    for (const auto& other : neighbors) {
+        if (&other == this) continue;
+        float diff = ClampAngle(other.AnchorAngle() - anchorAngle);
+        if (fabsf(diff) < minAngle * 0.8f) {
+            float sign = diff > 0 ? 1.0f : -1.0f;
+            anchorAV -= sign * repulsionStrength * ((minAngle * 0.8f) - fabsf(diff)) / (minAngle * 0.8f);
+        }
+    }
+
+    anchorAV = std::clamp(anchorAV, -anchorMaxAV, anchorMaxAV);
 
     anchorAngle = ClampAngle(anchorAngle + anchorAV * dt);
 
@@ -268,20 +282,8 @@ void Tentacle::Update(float dt, double timeMs, bool isActive, AnchorRing& ring, 
     lastAttachY = attachY;
     lastAttachZ = attachZ;
 
-    const float targetAngle = baseAngle + ring.offset;
-    float angleDiff = ClampAngle(targetAngle - anchorAngle);
-    anchorAV += angleDiff * 0.1f;
-
-    const float repulsionStrength = 0.5f;
-    const float minAngle = PI2 / static_cast<float>(neighbors.size());
-    for (const auto& other : neighbors) {
-        if (&other == this) continue;
-        float diff = ClampAngle(other.AnchorAngle() - anchorAngle);
-        if (fabsf(diff) < minAngle * 0.8f) {
-            float sign = diff > 0 ? 1.0f : -1.0f;
-            anchorAV -= sign * repulsionStrength * ((minAngle * 0.8f) - fabsf(diff)) / (minAngle * 0.8f);
-        }
-    }
+    core.avAccum += anchorAV;
+    core.avCount += 1;
 }
 
 void Tentacle::CollectSegments(const Core& coreRef, std::vector<SegmentDraw>& back, std::vector<SegmentDraw>& front) const {
