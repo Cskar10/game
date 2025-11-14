@@ -1,26 +1,7 @@
-Tentacle Game
-================
+Tentacle Game (Native)
+======================
 
-## Run in a browser
-
-Open `index.html` directly in a modern browser to explore the web version.
-
-## Run as a desktop app
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Launch the Electron shell:
-   ```bash
-   npm start
-   ```
-
-The Electron window simply wraps the existing canvas experience, so the physics and interactivity remain unchanged. To make a distributable build later on, add a packager such as `electron-builder` or `electron-packager`.
-
-## Native C++ engine
-
-The repository now ships with a full C++ rewrite of the simulation powered by [raylib](https://www.raylib.com/). You can compile it on Linux, macOS, or Windows with CMake ≥ 3.16 and a C++20 toolchain.
+This repository now contains only the native C++ implementation of the tentacle simulation, powered by [raylib](https://www.raylib.com/). Drag the orb with your mouse, trigger the energy bridge, and cycle palettes—all rendered in a high-performance desktop window.
 
 ### Prerequisites
 
@@ -38,7 +19,7 @@ cmake --build build --config Release
 ./build/abyssal_tentacle    # use .\build\Release\abyssal_tentacle.exe on Windows
 ```
 
-The executable opens a resizable window and renders the same tentacle simulation with native performance. Drag with the mouse to move the core, hit `Space` to trigger the energy bridge, `Q/E` to cycle palettes, and `H` to toggle the HUD.
+Controls: drag with the mouse to move the core, press `Space` to activate the energy bridge, `Q/E` to cycle palettes, and `H` to toggle the HUD.
 
 ### Optional packaging
 
