@@ -1,0 +1,14 @@
+# Target labels
+ raylib-populate
+# Source files and their labels
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate-complete.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-build.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-configure.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-download.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-install.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-mkdir.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-patch.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-test.rule
+/home/chris/Desktop/game/native/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-update.rule
