@@ -764,3 +764,40 @@ events:
         
       exitCode: 0
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckLibraryExists.cmake:69 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindX11.cmake:739 (check_library_exists)"
+      - "build/_deps/raylib-src/src/external/glfw/src/CMakeLists.txt:187 (find_package)"
+    checks:
+      - "Looking for IceConnectionNumber in ICE"
+    directories:
+      source: "/home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64"
+      binary: "/home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-fno-strict-aliasing -Werror=implicit-function-declaration -Werror=pointer-arith "
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/chris/Desktop/game/native/build/_deps/raylib-src/cmake;/home/chris/Desktop/game/native/build/_deps/raylib-src/src/external/glfw/CMake/modules"
+    buildResult:
+      variable: "CMAKE_LIB_ICE_HAS_ICECONNECTIONNUMBER"
+      cached: true
+      stdout: |
+        Change Dir: '/home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_30ef7/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_30ef7.dir/build.make CMakeFiles/cmTC_30ef7.dir/build
+        gmake[1]: Entering directory '/home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64'
+        Building C object CMakeFiles/cmTC_30ef7.dir/CheckFunctionExists.c.o
+        /usr/bin/cc   -fno-strict-aliasing -Werror=implicit-function-declaration -Werror=pointer-arith  -DCHECK_FUNCTION_EXISTS=IceConnectionNumber -std=gnu99 -o CMakeFiles/cmTC_30ef7.dir/CheckFunctionExists.c.o -c /home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64/CheckFunctionExists.c
+        Linking C executable cmTC_30ef7
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_30ef7.dir/link.txt --verbose=1
+        /usr/bin/cc -fno-strict-aliasing -Werror=implicit-function-declaration -Werror=pointer-arith  -DCHECK_FUNCTION_EXISTS=IceConnectionNumber CMakeFiles/cmTC_30ef7.dir/CheckFunctionExists.c.o -o cmTC_30ef7  -lICE 
+        gmake[1]: Leaving directory '/home/chris/Desktop/game/native/build/CMakeFiles/CMakeScratch/TryCompile-yGCE64'
+        
+      exitCode: 0
+...
