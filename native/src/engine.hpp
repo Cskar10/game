@@ -61,6 +61,25 @@ struct Ripple {
     double lifespan{0.9};
 };
 
+struct TrailParticle {
+    Vector2 pos{};
+    Vector2 vel{};
+    float alpha{1.0f};
+    float size{3.0f};
+    float lifetime{0.0f};
+    float maxLife{0.5f};
+};
+
+struct Prey {
+    Vector2 pos{};
+    float radius{18.0f};
+    float pulsePhase{0.0f};
+    bool captured{false};
+    float captureAnim{0.0f};
+    float spawnDelay{0.0f};
+};
+
+
 struct AnchorRing {
     float offset{0.0f};
     float angularVelocity{0.0f};
@@ -153,6 +172,7 @@ private:
 class Engine {
 public:
     Engine(int width, int height);
+    ~Engine();
 
     void Update(float dt);
     void Draw();
@@ -174,6 +194,19 @@ private:
     void maybeActivateEnergyBridge();
     void cyclePalette(int direction);
 
+    // New systems
+    void updateTrails(float dt);
+    void drawTrails() const;
+    void updatePrey(float dt);
+    void drawPrey() const;
+    void spawnPrey();
+    void updateTimer(float dt);
+    void drawTimer() const;
+    void resetGame();
+    void initBloom();
+    void resizeBloom(int width, int height);
+    void drawWithBloom();
+
     Palette& currentPalette();
     const Palette& currentPalette() const;
 
@@ -193,6 +226,27 @@ private:
     std::vector<SegmentDraw> backSegments;
     std::vector<SegmentDraw> frontSegments;
     std::vector<Vector3> tipCache;
+
+    // Trail particles
+    std::vector<TrailParticle> trails;
+
+    // Prey system
+    std::vector<Prey> prey;
+    int score{0};
+    int maxPrey{8};
+
+    // Timer system
+    float gameTimer{60.0f};
+    float maxTime{60.0f};
+    bool gameOver{false};
+    int highScore{0};
+
+    // Bloom render textures
+    RenderTexture2D sceneTexture{};
+    RenderTexture2D bloomTexture{};
+    RenderTexture2D blurTexture1{};
+    RenderTexture2D blurTexture2{};
+    bool bloomInitialized{false};
 
     std::array<Palette, 3> palettes;
     int paletteIndex{0};

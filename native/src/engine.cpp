@@ -309,11 +309,20 @@ void Tentacle::CollectSegments(const Core& coreRef, std::vector<SegmentDraw>& ba
     }
 }
 
+
 Engine::Engine(int width, int height) : screenWidth(width), screenHeight(height) {
     SetRandomSeed(static_cast<unsigned int>(GetTime() * 1000));
     mousePos = {static_cast<float>(width) * 0.5f, static_cast<float>(height) * 0.5f};
     core.pos = {mousePos.x, mousePos.y, 0.0f};
     core.radius = 60.0f;
+
+    // Initialize bloom render textures
+    initBloom();
+
+    // Initialize prey
+    for (int i = 0; i < maxPrey; ++i) {
+        spawnPrey();
+    }
 
     palettes = {
         Palette{
@@ -355,6 +364,53 @@ Engine::Engine(int width, int height) : screenWidth(width), screenHeight(height)
     }
 }
 
+Engine::~Engine() {
+    if (bloomInitialized) {
+        UnloadRenderTexture(sceneTexture);
+        UnloadRenderTexture(bloomTexture);
+        UnloadRenderTexture(blurTexture1);
+        UnloadRenderTexture(blurTexture2);
+    }
+}
+
+void Engine::initBloom() {
+    sceneTexture = LoadRenderTexture(screenWidth, screenHeight);
+    bloomTexture = LoadRenderTexture(screenWidth / 2, screenHeight / 2);
+    blurTexture1 = LoadRenderTexture(screenWidth / 4, screenHeight / 4);
+    blurTexture2 = LoadRenderTexture(screenWidth / 4, screenHeight / 4);
+    bloomInitialized = true;
+}
+
+void Engine::resizeBloom(int width, int height) {
+    if (bloomInitialized) {
+        UnloadRenderTexture(sceneTexture);
+        UnloadRenderTexture(bloomTexture);
+        UnloadRenderTexture(blurTexture1);
+        UnloadRenderTexture(blurTexture2);
+    }
+    screenWidth = width;
+    screenHeight = height;
+    sceneTexture = LoadRenderTexture(width, height);
+    bloomTexture = LoadRenderTexture(width / 2, height / 2);
+    blurTexture1 = LoadRenderTexture(width / 4, height / 4);
+    blurTexture2 = LoadRenderTexture(width / 4, height / 4);
+}
+
+void Engine::spawnPrey() {
+    float margin = 100.0f;
+    Prey p;
+    p.pos = {
+        RandRange(margin, screenWidth - margin),
+        RandRange(margin, screenHeight - margin)
+    };
+    p.radius = RandRange(14.0f, 22.0f);
+    p.pulsePhase = RandRange(0.0f, PI2);
+    p.captured = false;
+    p.captureAnim = 0.0f;
+    p.spawnDelay = 0.0f;
+    prey.push_back(p);
+}
+
 Palette& Engine::currentPalette() {
     return palettes[paletteIndex];
 }
@@ -387,6 +443,9 @@ void Engine::handleInput() {
     }
     if (IsKeyPressed(KEY_H)) {
         hudVisible = !hudVisible;
+    }
+    if (IsKeyPressed(KEY_R)) {
+        resetGame();
     }
 }
 
@@ -501,13 +560,146 @@ void Engine::updateEnergyBridge(float dt) {
     }
 }
 
+void Engine::updateTrails(float dt) {
+    // Spawn new trail particles at tentacle tips
+    for (const auto& tip : tipCache) {
+        if (GetRandomValue(0, 100) < 40) { // 40% chance per frame per tip
+            ScreenPoint projected = ProjectPoint(core.pos, tip);
+            TrailParticle tp;
+            tp.pos = projected.pos;
+            tp.vel = {RandRange(-15.0f, 15.0f), RandRange(-15.0f, 15.0f)};
+            tp.alpha = 0.8f;
+            tp.size = RandRange(2.0f, 5.0f);
+            tp.lifetime = 0.0f;
+            tp.maxLife = RandRange(0.3f, 0.7f);
+            trails.push_back(tp);
+        }
+    }
+
+    // Update existing trails
+    for (auto it = trails.begin(); it != trails.end();) {
+        it->lifetime += dt;
+        float lifeRatio = it->lifetime / it->maxLife;
+        it->alpha = 0.8f * (1.0f - lifeRatio);
+        it->size *= 0.97f;
+        it->pos.x += it->vel.x * dt;
+        it->pos.y += it->vel.y * dt;
+        it->vel.x *= 0.95f;
+        it->vel.y *= 0.95f;
+
+        if (it->lifetime >= it->maxLife || it->alpha < 0.01f) {
+            it = trails.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Limit max trails
+    const size_t maxTrails = 500;
+    while (trails.size() > maxTrails) {
+        trails.erase(trails.begin());
+    }
+}
+
+void Engine::updatePrey(float dt) {
+    const float time = static_cast<float>(nowMs * 0.001);
+
+    for (auto& p : prey) {
+        if (p.captured) {
+            p.captureAnim += dt * 3.0f;
+            if (p.captureAnim >= 1.0f && !gameOver) {
+                // Respawn after delay (only if game is still running)
+                p.spawnDelay += dt;
+                if (p.spawnDelay > 2.0f) {
+                    float margin = 100.0f;
+                    p.pos = {
+                        RandRange(margin, screenWidth - margin),
+                        RandRange(margin, screenHeight - margin)
+                    };
+                    p.radius = RandRange(14.0f, 22.0f);
+                    p.captured = false;
+                    p.captureAnim = 0.0f;
+                    p.spawnDelay = 0.0f;
+                }
+            }
+            continue;
+        }
+
+        // Update pulse
+        p.pulsePhase = fmodf(p.pulsePhase + dt * 3.0f, PI2);
+
+        // Check collision with tentacle tips (only if game is running)
+        if (!gameOver) {
+            for (const auto& tip : tipCache) {
+                ScreenPoint projected = ProjectPoint(core.pos, tip);
+                float dx = projected.pos.x - p.pos.x;
+                float dy = projected.pos.y - p.pos.y;
+                float dist = sqrtf(dx * dx + dy * dy);
+                if (dist < p.radius + 8.0f) {
+                    p.captured = true;
+                    p.captureAnim = 0.0f;
+                    score += 10;
+                    addRipple(p.pos);
+                    break;
+                }
+            }
+        }
+
+        // Gentle drift away from core
+        float toCoreDx = p.pos.x - core.pos.x;
+        float toCoreDy = p.pos.y - core.pos.y;
+        float toCoreLen = sqrtf(toCoreDx * toCoreDx + toCoreDy * toCoreDy);
+        if (toCoreLen > 1.0f && toCoreLen < 300.0f) {
+            float flee = 20.0f / toCoreLen;
+            p.pos.x += (toCoreDx / toCoreLen) * flee * dt;
+            p.pos.y += (toCoreDy / toCoreLen) * flee * dt;
+        }
+
+        // Keep in bounds
+        float margin = 50.0f;
+        if (p.pos.x < margin) p.pos.x = margin;
+        if (p.pos.x > screenWidth - margin) p.pos.x = screenWidth - margin;
+        if (p.pos.y < margin) p.pos.y = margin;
+        if (p.pos.y > screenHeight - margin) p.pos.y = screenHeight - margin;
+    }
+}
+
+void Engine::updateTimer(float dt) {
+    if (gameOver) return;
+
+    gameTimer -= dt;
+    if (gameTimer <= 0.0f) {
+        gameTimer = 0.0f;
+        gameOver = true;
+        if (score > highScore) {
+            highScore = score;
+        }
+    }
+}
+
+void Engine::resetGame() {
+    gameTimer = maxTime;
+    gameOver = false;
+    score = 0;
+
+    // Reset all prey
+    prey.clear();
+    for (int i = 0; i < maxPrey; ++i) {
+        spawnPrey();
+    }
+}
+
 void Engine::Update(float dt) {
     nowMs = GetTime() * 1000.0;
     if (IsWindowResized()) {
-        rebuildBackground(GetScreenWidth(), GetScreenHeight());
+        int newWidth = GetScreenWidth();
+        int newHeight = GetScreenHeight();
+        rebuildBackground(newWidth, newHeight);
+        resizeBloom(newWidth, newHeight);
     }
 
     handleInput();
+    updateTimer(dt);
     updateCore(dt);
     updateBackground(dt);
     updateRipples();
@@ -535,6 +727,8 @@ void Engine::Update(float dt) {
     }
 
     updateEnergyBridge(dt);
+    updateTrails(dt);
+    updatePrey(dt);
 }
 
 void Engine::drawBackground() const {
@@ -632,26 +826,94 @@ void Engine::drawEnergyBridge() {
     }
 }
 
+void Engine::drawTimer() const {
+    const auto& palette = currentPalette();
+
+    // Draw timer bar at top of screen
+    float barWidth = 400.0f;
+    float barHeight = 12.0f;
+    float barX = (screenWidth - barWidth) * 0.5f;
+    float barY = 20.0f;
+
+    // Background
+    DrawRectangleRounded({barX - 4, barY - 4, barWidth + 8, barHeight + 8}, 0.5f, 8, Color{10, 18, 42, 200});
+
+    // Timer fill
+    float fillRatio = gameTimer / maxTime;
+    Color fillColor = fillRatio > 0.25f ? FadeColor(palette.bridge.inner, 0.9f) : FadeColor(RGB{255, 80, 80}, 0.9f);
+    if (fillRatio > 0.0f) {
+        DrawRectangleRounded({barX, barY, barWidth * fillRatio, barHeight}, 0.5f, 8, fillColor);
+    }
+
+    // Timer text
+    int seconds = static_cast<int>(gameTimer);
+    int tenths = static_cast<int>((gameTimer - seconds) * 10);
+    char timerText[32];
+    snprintf(timerText, sizeof(timerText), "%d.%d", seconds, tenths);
+
+    int textWidth = MeasureText(timerText, 24);
+    DrawText(timerText, (screenWidth - textWidth) / 2, barY + barHeight + 8, 24, WHITE);
+
+    // Game over overlay
+    if (gameOver) {
+        // Darken screen
+        DrawRectangle(0, 0, screenWidth, screenHeight, Color{0, 0, 0, 150});
+
+        // Game over box
+        float boxWidth = 350.0f;
+        float boxHeight = 200.0f;
+        float boxX = (screenWidth - boxWidth) * 0.5f;
+        float boxY = (screenHeight - boxHeight) * 0.5f;
+
+        DrawRectangleRounded({boxX, boxY, boxWidth, boxHeight}, 0.1f, 8, Color{10, 18, 42, 240});
+        DrawRectangleRoundedLines({boxX, boxY, boxWidth, boxHeight}, 0.1f, 8, 3.0f, FadeColor(palette.bridge.inner, 0.8f));
+
+        const char* gameOverText = "TIME'S UP!";
+        int goWidth = MeasureText(gameOverText, 36);
+        DrawText(gameOverText, (screenWidth - goWidth) / 2, boxY + 30, 36, FadeColor(palette.bridge.inner, 1.0f));
+
+        char finalScore[64];
+        snprintf(finalScore, sizeof(finalScore), "Final Score: %d", score);
+        int fsWidth = MeasureText(finalScore, 28);
+        DrawText(finalScore, (screenWidth - fsWidth) / 2, boxY + 80, 28, WHITE);
+
+        char highScoreText[64];
+        snprintf(highScoreText, sizeof(highScoreText), "High Score: %d", highScore);
+        int hsWidth = MeasureText(highScoreText, 22);
+        DrawText(highScoreText, (screenWidth - hsWidth) / 2, boxY + 115, 22, FadeColor(palette.glow, 0.8f));
+
+        const char* restartText = "Press R to restart";
+        int rWidth = MeasureText(restartText, 20);
+        DrawText(restartText, (screenWidth - rWidth) / 2, boxY + 160, 20, FadeColor(palette.tentacle, 0.9f));
+    }
+}
+
 void Engine::drawHud() const {
     if (!hudVisible) return;
     const auto& palette = currentPalette();
-    Rectangle rect{20.0f, 20.0f, 280.0f, 160.0f};
+    Rectangle rect{20.0f, 60.0f, 260.0f, 160.0f};
     Color bg{10, 18, 42, 180};
     DrawRectangleRounded(rect, 0.1f, 8, bg);
     DrawRectangleRoundedLines(rect, 0.1f, 8, 2.0f, FadeColor(palette.glow, 0.4f));
 
     int fontSizeTitle = 20;
     DrawText(palette.name.c_str(), rect.x + 16, rect.y + 12, fontSizeTitle, WHITE);
-    DrawText("Drag the core, weave the current.", rect.x + 16, rect.y + 44, 16, FadeColor(palette.glow, 0.7f));
 
-    int y = rect.y + 72;
-    DrawText("Drag: Move core", rect.x + 16, y, 16, FadeColor(palette.tentacle, 0.8f));
-    y += 20;
-    DrawText("Space: Energy bridge", rect.x + 16, y, 16, FadeColor(palette.tentacle, 0.8f));
-    y += 20;
-    DrawText("Q/E: Palettes", rect.x + 16, y, 16, FadeColor(palette.tentacle, 0.8f));
-    y += 20;
-    DrawText("H: Toggle HUD", rect.x + 16, y, 16, FadeColor(palette.tentacle, 0.8f));
+    // Score display
+    char scoreText[32];
+    snprintf(scoreText, sizeof(scoreText), "Score: %d", score);
+    DrawText(scoreText, rect.x + 140, rect.y + 12, 20, FadeColor(palette.bridge.inner, 1.0f));
+
+    DrawText("Catch the orbs!", rect.x + 16, rect.y + 40, 14, FadeColor(palette.glow, 0.7f));
+
+    int y = rect.y + 62;
+    DrawText("Drag: Move core", rect.x + 16, y, 14, FadeColor(palette.tentacle, 0.8f));
+    y += 18;
+    DrawText("Space: Energy bridge", rect.x + 16, y, 14, FadeColor(palette.tentacle, 0.8f));
+    y += 18;
+    DrawText("Q/E: Palettes  H: HUD", rect.x + 16, y, 14, FadeColor(palette.tentacle, 0.8f));
+    y += 18;
+    DrawText("R: Restart game", rect.x + 16, y, 14, FadeColor(palette.ripple, 0.8f));
 
     std::string status = "Ready";
     if (bridge.isActive) status = "Bridge active";
@@ -663,13 +925,154 @@ void Engine::drawHud() const {
             status = buffer;
         }
     }
-    DrawText(status.c_str(), rect.x + 16, rect.y + rect.height - 32, 16, FadeColor(palette.bridge.inner, 0.9f));
+    DrawText(status.c_str(), rect.x + 16, rect.y + rect.height - 28, 14, FadeColor(palette.bridge.inner, 0.9f));
+}
+
+void Engine::drawTrails() const {
+    const auto& palette = currentPalette();
+    for (const auto& t : trails) {
+        Color color = FadeColor(palette.glow, t.alpha * 0.6f);
+        DrawCircleV(t.pos, t.size, color);
+    }
+}
+
+void Engine::drawPrey() const {
+    const auto& palette = currentPalette();
+    const float time = static_cast<float>(nowMs * 0.001);
+
+    for (const auto& p : prey) {
+        if (p.captured) {
+            // Capture animation - expanding ring that fades
+            float anim = p.captureAnim;
+            if (anim < 1.0f) {
+                float radius = p.radius * (1.0f + anim * 3.0f);
+                float alpha = 1.0f - anim;
+                DrawCircleV(p.pos, radius, FadeColor(palette.bridge.inner, alpha * 0.5f));
+                DrawRing(p.pos, radius - 3.0f, radius, 0.0f, 360.0f, 32, FadeColor(palette.bridge.outer, alpha));
+            }
+            continue;
+        }
+
+        // Pulsing glow effect
+        float pulse = 0.7f + 0.3f * sinf(p.pulsePhase);
+        float glowRadius = p.radius * (1.3f + 0.2f * sinf(p.pulsePhase * 0.5f));
+
+        // Outer glow
+        for (int i = 3; i >= 0; --i) {
+            float layerRadius = glowRadius + i * 8.0f;
+            float layerAlpha = 0.15f * (1.0f - i * 0.2f) * pulse;
+            DrawCircleV(p.pos, layerRadius, FadeColor(palette.bridge.outer, layerAlpha));
+        }
+
+        // Inner orb
+        DrawCircleV(p.pos, p.radius, FadeColor(palette.bridge.inner, 0.9f * pulse));
+        DrawCircleV(p.pos, p.radius * 0.6f, FadeColor(RGB{255, 255, 255}, 0.7f * pulse));
+
+        // Sparkle
+        float sparkleAngle = time * 3.0f + p.pulsePhase;
+        Vector2 sparklePos = {
+            p.pos.x + cosf(sparkleAngle) * p.radius * 0.4f,
+            p.pos.y + sinf(sparkleAngle) * p.radius * 0.4f
+        };
+        DrawCircleV(sparklePos, 2.0f + sinf(time * 8.0f) * 1.0f, WHITE);
+    }
+}
+
+
+void Engine::drawWithBloom() {
+    // Render scene to texture
+    BeginTextureMode(sceneTexture);
+    ClearBackground(BLACK);
+    drawBackground();
+    drawRipples();
+    drawTrails();
+    drawPrey();
+    drawTentacles();
+    drawEnergyBridge();
+    EndTextureMode();
+
+    // Extract bright areas to bloom texture (downsampled)
+    BeginTextureMode(bloomTexture);
+    ClearBackground(BLACK);
+    DrawTexturePro(
+        sceneTexture.texture,
+        {0, 0, static_cast<float>(sceneTexture.texture.width), -static_cast<float>(sceneTexture.texture.height)},
+        {0, 0, static_cast<float>(bloomTexture.texture.width), static_cast<float>(bloomTexture.texture.height)},
+        {0, 0}, 0.0f, WHITE
+    );
+    EndTextureMode();
+
+    // Horizontal blur pass
+    BeginTextureMode(blurTexture1);
+    ClearBackground(BLACK);
+    // Draw bloomTexture with slight offset multiple times for blur effect
+    for (int i = -3; i <= 3; ++i) {
+        float alpha = 0.15f * (1.0f - fabsf(i) * 0.12f);
+        DrawTexturePro(
+            bloomTexture.texture,
+            {0, 0, static_cast<float>(bloomTexture.texture.width), -static_cast<float>(bloomTexture.texture.height)},
+            {static_cast<float>(i * 2), 0, static_cast<float>(blurTexture1.texture.width), static_cast<float>(blurTexture1.texture.height)},
+            {0, 0}, 0.0f, Fade(WHITE, alpha)
+        );
+    }
+    EndTextureMode();
+
+    // Vertical blur pass
+    BeginTextureMode(blurTexture2);
+    ClearBackground(BLACK);
+    for (int i = -3; i <= 3; ++i) {
+        float alpha = 0.15f * (1.0f - fabsf(i) * 0.12f);
+        DrawTexturePro(
+            blurTexture1.texture,
+            {0, 0, static_cast<float>(blurTexture1.texture.width), -static_cast<float>(blurTexture1.texture.height)},
+            {0, static_cast<float>(i * 2), static_cast<float>(blurTexture2.texture.width), static_cast<float>(blurTexture2.texture.height)},
+            {0, 0}, 0.0f, Fade(WHITE, alpha)
+        );
+    }
+    EndTextureMode();
+
+    // Final composite: scene + bloom
+    // Draw original scene
+    DrawTexturePro(
+        sceneTexture.texture,
+        {0, 0, static_cast<float>(sceneTexture.texture.width), -static_cast<float>(sceneTexture.texture.height)},
+        {0, 0, static_cast<float>(screenWidth), static_cast<float>(screenHeight)},
+        {0, 0}, 0.0f, WHITE
+    );
+
+    // Additive bloom overlay
+    BeginBlendMode(BLEND_ADDITIVE);
+    DrawTexturePro(
+        blurTexture2.texture,
+        {0, 0, static_cast<float>(blurTexture2.texture.width), -static_cast<float>(blurTexture2.texture.height)},
+        {0, 0, static_cast<float>(screenWidth), static_cast<float>(screenHeight)},
+        {0, 0}, 0.0f, Fade(WHITE, 0.7f)
+    );
+    // Second pass for stronger glow
+    DrawTexturePro(
+        bloomTexture.texture,
+        {0, 0, static_cast<float>(bloomTexture.texture.width), -static_cast<float>(bloomTexture.texture.height)},
+        {0, 0, static_cast<float>(screenWidth), static_cast<float>(screenHeight)},
+        {0, 0}, 0.0f, Fade(WHITE, 0.35f)
+    );
+    EndBlendMode();
+
+    // HUD and timer on top (not bloomed)
+    drawTimer();
+    drawHud();
 }
 
 void Engine::Draw() {
-    drawBackground();
-    drawRipples();
-    drawTentacles();
-    drawEnergyBridge();
-    drawHud();
+    if (bloomInitialized) {
+        drawWithBloom();
+    } else {
+        drawBackground();
+        drawRipples();
+        drawTrails();
+        drawPrey();
+        drawTentacles();
+        drawEnergyBridge();
+        drawTimer();
+        drawHud();
+    }
 }
